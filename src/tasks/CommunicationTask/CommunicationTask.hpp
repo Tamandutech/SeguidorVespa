@@ -8,7 +8,12 @@ struct CommunicationTaskParamSchema {
 };
 
 void communicationTaskLoop(void *params) {
-  CommunicationTaskParamSchema *param = (CommunicationTaskParamSchema *)params;
+  CommunicationTaskParamSchema *param =
+      static_cast<CommunicationTaskParamSchema *>(params);
+
+  // Suppress unused parameter warning - param will be used for communication
+  // logic
+  (void)param;
 
   for(;;) {
     vTaskDelay(1000 / portTICK_PERIOD_MS);
