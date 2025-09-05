@@ -7,9 +7,6 @@ AlignConsecutiveAssignments: AcrossComments
 AlignConsecutiveBitFields: AcrossComments
 AlignConsecutiveDeclarations: None
 AlignConsecutiveMacros: AcrossComments
-AlignConsecutiveTableGenBreakingDAGArgColons: AcrossComments
-AlignConsecutiveTableGenCondOperatorColons: AcrossComments
-AlignConsecutiveTableGenDefinitionColons: AcrossComments
 AlignEscapedNewlines: DontAlign
 AlignOperands: AlignAfterOperator
 AlignTrailingComments: 
