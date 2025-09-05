@@ -27,11 +27,11 @@ struct PathControllerConstants {
  */
 struct PathControllerParamSchema {
   const PathControllerConstants constants; // Constantes do controlador PID
-  const int sensor_quantity;               // Quantidade de sensores de linha
-  int *sensor_values;           // Ponteiro para array de valores dos sensores
-  const float max_angle;        // Ângulo máximo em graus
-  const uint16_t radius_sensor; // Raio dos sensores
-  const uint16_t sensor_to_center; // Distância do sensor ao centro
+  const int sensorQuantity;                // Quantidade de sensores de linha
+  int *sensorValues;             // Ponteiro para array de valores dos sensores
+  const float maxAngle;          // Ângulo máximo em graus
+  const uint16_t radiusSensor;   // Raio dos sensores
+  const uint16_t sensorToCenter; // Distância do sensor ao centro
 };
 
 /**
@@ -52,21 +52,21 @@ public:
   float getPID();
 
 private:
-  const size_t sensor_quantity; // Quantidade de sensores de linha
-  int *sensor_values;           // Ponteiro para array de valores dos sensores
-  PathControllerConstants constants; // Constantes do controlador PID
+  const size_t sensorQuantity_; // Quantidade de sensores de linha
+  int *sensorValues_;           // Ponteiro para array de valores dos sensores
+  PathControllerConstants constants_; // Constantes do controlador PID
 
   // Parâmetros geométricos para cálculo do ângulo
-  const float max_angle;           // Ângulo máximo em radianos
-  const uint16_t radius_sensor;    // Raio dos sensores
-  const uint16_t sensor_to_center; // Distância do sensor ao centro
+  const float maxAngle_;          // Ângulo máximo em radianos
+  const uint16_t radiusSensor_;   // Raio dos sensores
+  const uint16_t sensorToCenter_; // Distância do sensor ao centro
 
-  float integralSummation;         // Acumulador do termo integral do PID
-  float lastError; // Último erro calculado para o termo derivativo
+  float integralSummation_;       // Acumulador do termo integral do PID
+  float lastError_; // Último erro calculado para o termo derivativo
 
   // Rastreamento do estado dos sensores
-  uint32_t lastPosition; // Última posição calculada da linha
-  bool onLine;           // Indica se o robô está sobre a linha
+  uint32_t lastPosition_; // Última posição calculada da linha
+  bool onLine_;           // Indica se o robô está sobre a linha
 };
 
 /**
@@ -78,13 +78,12 @@ private:
  * @param param Parâmetros de inicialização do controlador
  */
 PathController::PathController(PathControllerParamSchema &param)
-    : constants(param.constants), sensor_quantity(param.sensor_quantity),
-      sensor_values(param.sensor_values),
-      max_angle(param.max_angle * M_PI /
-                180.0f), // Converte graus para radianos
-      radius_sensor(param.radius_sensor),
-      sensor_to_center(param.sensor_to_center), integralSummation(0.0f),
-      lastError(0.0f), lastPosition(0), onLine(false) {}
+    : sensorQuantity_(param.sensorQuantity), sensorValues_(param.sensorValues),
+      constants_(param.constants),
+      maxAngle_(param.maxAngle * M_PI / 180.0F), // Converte graus para radianos
+      radiusSensor_(param.radiusSensor), sensorToCenter_(param.sensorToCenter),
+      integralSummation_(0.0F), lastError_(0.0F), lastPosition_(0),
+      onLine_(false) {}
 
 /**
  * @brief Calcula a posição da linha em relação aos sensores
@@ -99,47 +98,48 @@ PathController::PathController(PathControllerParamSchema &param)
 float PathController::getLinePosition() {
   // Baseado no método QTRwithMUX::read_all()
 
-  bool on_Line =
+  bool onLine =
       false; // se falso até o final, os sensores estão todos fora da linha
   uint32_t avg = 0; // soma ponderada das leituras
   uint32_t sum = 0; // soma das leituras
 
   // Simula leituras dos sensores (substituir por lógica real de leitura dos
   // sensores)
-  for(int i = 0; i < sensor_quantity; i++) {
+  for(int i = 0; i < sensorQuantity_; i++) {
     // Este é um placeholder - substituir por leitura real do sensor
-    sensor_values[i] = 0; // Valor simulado do sensor
+    // Usa uma abordagem que evita pointer arithmetic
+    int sensorValue  = 0;           // Inicializa o valor do sensor
+    sensorValues_[i] = sensorValue; // Atribui o valor
 
     // Aplica a mesma lógica do QTRwithMUX::read_all()
-    if(sensor_values[i] > 200) {
-      on_Line = true; // verifica se tem um sensor na linha
+    if(sensorValue > 200) {
+      onLine = true;       // verifica se tem um sensor na linha
     }
-    if(sensor_values[i] >
-       50) {                   // valores menores que 50 são considerados ruídos
-      avg += (uint32_t)sensor_values[i] *
-             (i * 1000);       // soma ponderada de cada leitura
-      sum += sensor_values[i]; // soma total das leituras
+    if(sensorValue > 50) { // valores menores que 50 são considerados ruídos
+      avg += static_cast<uint32_t>(sensorValue) *
+             (i * 1000);   // soma ponderada de cada leitura
+      sum += sensorValue;  // soma total das leituras
     }
   }
 
-  if(!on_Line) {
+  if(!onLine) {
     // Se o robô está fora da linha, retorna a direção da última leitura
     // Se a última posição foi à direita do centro, retorna 0
-    if(lastPosition < (sensor_quantity - 1) * 1000 / 2) {
-      return 0.0f;
+    if(lastPosition_ < (sensorQuantity_ - 1) * 1000 / 2) {
+      return 0.0F;
     }
     // Se a última posição foi à esquerda do centro, retorna o valor máximo
     else {
-      return (float)((sensor_quantity - 1) * 1000);
+      return static_cast<float>((sensorQuantity_ - 1) * 1000);
     }
   } else {
     // Dividindo avg por sum, obtém-se a posição relativa do robô na linha
     // Com 16 sensores, o centro se encontra no valor 7.500
-    lastPosition = (avg / sum);
-    onLine       = true;
+    lastPosition_ = (avg / sum);
+    onLine_       = true;
 
-    // Retorna posição não normalizada (0 a (sensor_quantity-1)*1000)
-    return (float)lastPosition;
+    // Retorna posição não normalizada (0 a (sensorQuantity_-1)*1000)
+    return static_cast<float>(lastPosition_);
   }
 }
 
@@ -154,33 +154,33 @@ float PathController::getLinePosition() {
  */
 float PathController::getLineAngle() {
   // Obtém a posição atual da linha usando o método getLinePosition
-  // Agora retorna valor não normalizado (0 a (sensor_quantity-1)*1000)
-  int32_t position = (int32_t)getLinePosition();
+  // Agora retorna valor não normalizado (0 a (sensorQuantity_-1)*1000)
+  int32_t position = static_cast<int32_t>(getLinePosition());
 
   // Subtrai a metade do valor máximo para centralizar a posição em 0
   // Para 16 sensores: vai de 0 a 15000, após subtração vai de -7500 a +7500
-  position = position - ((sensor_quantity - 1) * 500);
+  position = position - ((sensorQuantity_ - 1) * 500);
 
   // Converte a posição para ângulo usando regra de três
-  // position vai de -(sensor_quantity-1)*500 a +(sensor_quantity-1)*500
-  // max_angle vai de -max_angle a +max_angle
-  float angle_radius = (position * max_angle) / ((sensor_quantity - 1) * 500);
+  // position vai de -(sensorQuantity_-1)*500 a +(sensorQuantity_-1)*500
+  // maxAngle_ vai de -maxAngle_ a +maxAngle_
+  float angleRadius = (position * maxAngle_) / ((sensorQuantity_ - 1) * 500);
 
   // Calcula o ângulo com o centro usando geometria circular
-  // Fórmula: atan(sin(angle_radius) / (cos(angle_radius) - 1 +
-  // (sensor_to_center/radius_sensor)))
-  float denominator =
-      cos(angle_radius) - 1.0f + ((float)sensor_to_center / radius_sensor);
+  // Fórmula: atan(sin(angleRadius) / (cos(angleRadius) - 1 +
+  // (sensorToCenter_/radiusSensor_)))
+  float denominator = cosf(angleRadius) - 1.0F +
+                      (static_cast<float>(sensorToCenter_) / radiusSensor_);
 
   // Evita divisão por zero
-  if(fabs(denominator) < 1e-6f) {
-    return 0.0f;
+  if(fabsf(denominator) < 1e-6F) {
+    return 0.0F;
   }
 
-  float angle_with_center = atan(sin(angle_radius) / denominator);
+  float angleWithCenter = atanf(sinf(angleRadius) / denominator);
 
   // Retorna o ângulo em radianos
-  return angle_with_center;
+  return angleWithCenter;
 }
 
 /**
@@ -194,11 +194,11 @@ float PathController::getLineAngle() {
  */
 float PathController::getPID() {
   float error = getLineAngle();
-  integralSummation += error;
-  float derivative = error - lastError;
-  lastError        = error;
-  return constants.kP * error + constants.kI * integralSummation +
-         constants.kD * derivative;
+  integralSummation_ += error;
+  float derivative = error - lastError_;
+  lastError_       = error;
+  return constants_.kP * error + constants_.kI * integralSummation_ +
+         constants_.kD * derivative;
 }
 
 #endif // PATH_CONTROLLER_HPP

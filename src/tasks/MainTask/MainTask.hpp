@@ -33,11 +33,11 @@ void mainTaskLoop(void *params) {
     float pathPID = pathController->getPID();
 
     // TODO: Use motorDriver to apply PID output to motors
-    // motorDriver->setSpeed(pidOutput);
+    // motorDriver->setSpeed(pathPID);
 
-    // Suppress unused variable warning - motorDriver will be used for motor
-    // control
+    // Suppress unused variable warnings - these will be used for motor control
     (void)motorDriver;
+    (void)pathPID;
 
     vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
