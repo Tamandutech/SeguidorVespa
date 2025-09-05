@@ -15,13 +15,23 @@ void mainTaskLoop(void *params) {
   MainTaskParamSchema *param = (MainTaskParamSchema *)params;
   MotorDriver *motorDriver   = new MotorDriver(param->uselessData);
 
+  // Array de valores dos sensores (placeholder - deve ser inicializado com
+  // dados reais)
+  int sensor_values[12] = {0}; // Inicializa com zeros
+
   PathControllerParamSchema pathControllerParam = {
-      .sensor_quantity = 4,
-      .constants       = {.kP = 0.1, .kI = 0.01, .kD = 0.001},
+      .constants        = {.kP = 0.1, .kI = 0.01, .kD = 0.001},
+      .sensor_quantity  = 12,
+      .sensor_values    = sensor_values,
+      .max_angle        = 45.0f, // Ângulo máximo de 45 graus
+      .radius_sensor    = 100, // Raio dos sensores em mm
+      .sensor_to_center = 50, // Distância do sensor ao centro em mm
   };
   PathController *pathController = new PathController(pathControllerParam);
 
   for(;;) {
+    pathController->getPID();
+
     vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
 }
