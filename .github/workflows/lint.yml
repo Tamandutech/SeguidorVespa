@@ -39,6 +39,6 @@ jobs:
           no-lgtm: false
           step-summary: true
           file-annotations: true
-          tidy-review: true
+          tidy-review: false
           format-review: true
           thread-comments: 'update'
