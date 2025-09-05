@@ -20,10 +20,10 @@ void mainTaskLoop(void *params) {
   int sensor_values[12] = {0}; // Inicializa com zeros
 
   PathControllerParamSchema pathControllerParam = {
-      .constants        = {.kP = 0.1, .kI = 0.01, .kD = 0.001},
+      .constants        = {.kP = 0.1F, .kI = 0.01F, .kD = 0.001F},
       .sensor_quantity  = 12,
       .sensor_values    = sensor_values,
-      .max_angle        = 45.0f, // Ângulo máximo de 45 graus
+      .max_angle        = 45.0F, // Ângulo máximo de 45 graus
       .radius_sensor    = 100, // Raio dos sensores em mm
       .sensor_to_center = 50, // Distância do sensor ao centro em mm
   };
