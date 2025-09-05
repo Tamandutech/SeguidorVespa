@@ -25,10 +25,6 @@ AlwaysBreakBeforeMultilineStrings: false
 EmptyLineAfterAccessModifier: Never
 EmptyLineBeforeAccessModifier: Always
 FixNamespaceComments: true
-KeepEmptyLines:
-  AtEndOfFile: true
-  AtStartOfBlock: false
-  AtStartOfFile: false
 MaxEmptyLinesToKeep: 2
 PointerAlignment: Right
 SpaceBeforeAssignmentOperators: true
