@@ -12,25 +12,32 @@ struct MainTaskParamSchema {
 };
 
 void mainTaskLoop(void *params) {
-  MainTaskParamSchema *param = (MainTaskParamSchema *)params;
+  MainTaskParamSchema *param = static_cast<MainTaskParamSchema *>(params);
   MotorDriver *motorDriver   = new MotorDriver(param->uselessData);
 
   // Array de valores dos sensores (placeholder - deve ser inicializado com
   // dados reais)
-  int sensor_values[12] = {0}; // Inicializa com zeros
+  int sensorValues[12] = {0}; // Inicializa com zeros
 
   PathControllerParamSchema pathControllerParam = {
-      .constants        = {.kP = 0.1F, .kI = 0.01F, .kD = 0.001F},
-      .sensor_quantity  = 12,
-      .sensor_values    = sensor_values,
-      .max_angle        = 45.0F, // Ângulo máximo de 45 graus
-      .radius_sensor    = 100, // Raio dos sensores em mm
-      .sensor_to_center = 50, // Distância do sensor ao centro em mm
+      .constants      = {.kP = 0.1F, .kI = 0.01F, .kD = 0.001F},
+      .sensorQuantity = 12,
+      .sensorValues   = &sensorValues[0],
+      .maxAngle       = 45.0F, // Ângulo máximo de 45 graus
+      .radiusSensor   = 100, // Raio dos sensores em mm
+      .sensorToCenter = 50, // Distância do sensor ao centro em mm
   };
   PathController *pathController = new PathController(pathControllerParam);
 
   for(;;) {
-    pathController->getPID();
+    float pathPID = pathController->getPID();
+
+    // TODO: Use motorDriver to apply PID output to motors
+    // motorDriver->setSpeed(pidOutput);
+
+    // Suppress unused variable warning - motorDriver will be used for motor
+    // control
+    (void)motorDriver;
 
     vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
