@@ -27,8 +27,8 @@ struct PathControllerConstants {
  */
 struct PathControllerParamSchema {
   const PathControllerConstants constants; // Constantes do controlador PID
-  const int sensorQuantity;                // Quantidade de sensores de linha
-  int *sensorValues;             // Ponteiro para array de valores dos sensores
+  const size_t sensorQuantity;             // Quantidade de sensores de linha
+  const int *sensorValues;       // Ponteiro para array de valores dos sensores
   const float maxAngle;          // Ângulo máximo em graus
   const uint16_t radiusSensor;   // Raio dos sensores
   const uint16_t sensorToCenter; // Distância do sensor ao centro
@@ -52,9 +52,9 @@ public:
   float getPID();
 
 private:
-  const size_t sensorQuantity_; // Quantidade de sensores de linha
-  int *sensorValues_;           // Ponteiro para array de valores dos sensores
   PathControllerConstants constants_; // Constantes do controlador PID
+  const size_t sensorQuantity_;       // Quantidade de sensores de linha
+  const int *sensorValues_; // Ponteiro para array de valores dos sensores
 
   // Parâmetros geométricos para cálculo do ângulo
   const float maxAngle_;          // Ângulo máximo em radianos
@@ -78,8 +78,8 @@ private:
  * @param param Parâmetros de inicialização do controlador
  */
 PathController::PathController(PathControllerParamSchema &param)
-    : sensorQuantity_(param.sensorQuantity), sensorValues_(param.sensorValues),
-      constants_(param.constants),
+    : constants_(param.constants), sensorQuantity_(param.sensorQuantity),
+      sensorValues_(param.sensorValues),
       maxAngle_(param.maxAngle * M_PI / 180.0F), // Converte graus para radianos
       radiusSensor_(param.radiusSensor), sensorToCenter_(param.sensorToCenter),
       integralSummation_(0.0F), lastError_(0.0F), lastPosition_(0),
@@ -103,13 +103,10 @@ float PathController::getLinePosition() {
   uint32_t avg = 0; // soma ponderada das leituras
   uint32_t sum = 0; // soma das leituras
 
-  // Simula leituras dos sensores (substituir por lógica real de leitura dos
-  // sensores)
-  for(int i = 0; i < sensorQuantity_; i++) {
-    // Este é um placeholder - substituir por leitura real do sensor
-    // Usa uma abordagem que evita pointer arithmetic
-    int sensorValue  = 0;           // Inicializa o valor do sensor
-    sensorValues_[i] = sensorValue; // Atribui o valor
+  // Lê os valores dos sensores do array sensorValues_
+  for(size_t i = 0; i < sensorQuantity_; i++) {
+    // Lê o valor real do sensor do array
+    int sensorValue = sensorValues_[i];
 
     // Aplica a mesma lógica do QTRwithMUX::read_all()
     if(sensorValue > 200) {
@@ -150,7 +147,7 @@ float PathController::getLinePosition() {
  * atual da linha. Este método converte a posição da linha em um ângulo
  * para correção de direção usando geometria circular.
  *
- * @return Ângulo de desvio em radianos (-π/2 a π/2)
+ * @return Ângulo de desvio em graus (-90° a 90°)
  */
 float PathController::getLineAngle() {
   // Obtém a posição atual da linha usando o método getLinePosition
@@ -172,15 +169,20 @@ float PathController::getLineAngle() {
   float denominator = cosf(angleRadius) - 1.0F +
                       (static_cast<float>(sensorToCenter_) / radiusSensor_);
 
-  // Evita divisão por zero
-  if(fabsf(denominator) < 1e-6F) {
-    return 0.0F;
+  // Evita divisão por zero - retorna ângulo máximo quando o denominador é muito
+  // pequeno
+  if(fabsf(denominator) < RobotEnv::EPSILON_TOLERANCE) {
+    // Quando o denominador é próximo de zero, o robô está em uma posição
+    // extrema Retorna o ângulo máximo com sinal baseado na posição para manter
+    // controle
+    return (position >= 0) ? maxAngle_ * 180.0F / M_PI
+                           : -maxAngle_ * 180.0F / M_PI;
   }
 
   float angleWithCenter = atanf(sinf(angleRadius) / denominator);
 
-  // Retorna o ângulo em radianos
-  return angleWithCenter;
+  // Converte o ângulo de radianos para graus e retorna
+  return angleWithCenter * 180.0F / M_PI;
 }
 
 /**
@@ -189,14 +191,26 @@ float PathController::getLineAngle() {
  * Implementa um controlador PID (Proporcional-Integral-Derivativo) para
  * calcular a correção necessária nos motores baseada no erro de posição.
  * O erro é calculado como o ângulo de desvio da linha.
+ * Inclui proteção contra integral windup para evitar saturação.
  *
  * @return Valor de correção para os motores (normalizado)
  */
 float PathController::getPID() {
   float error = getLineAngle();
+
+  // Adiciona o erro ao termo integral
   integralSummation_ += error;
+
+  // Aplica proteção contra integral windup
+  if(integralSummation_ > RobotEnv::INTEGRAL_MAX) {
+    integralSummation_ = RobotEnv::INTEGRAL_MAX;
+  } else if(integralSummation_ < RobotEnv::INTEGRAL_MIN) {
+    integralSummation_ = RobotEnv::INTEGRAL_MIN;
+  }
+
   float derivative = error - lastError_;
   lastError_       = error;
+
   return constants_.kP * error + constants_.kI * integralSummation_ +
          constants_.kD * derivative;
 }
