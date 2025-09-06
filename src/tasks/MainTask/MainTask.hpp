@@ -1,19 +1,24 @@
 #ifndef MAIN_TASK_HPP
 #define MAIN_TASK_HPP
 
-#include "context/UselessData.hpp"
+#include "context/GlobalData.hpp"
 
 #include "drivers/MotorDriver/MotorDriver.hpp"
 
 #include "tasks/MainTask/PathController/PathController.hpp"
 
 struct MainTaskParamSchema {
-  UselessData &uselessData;
+  GlobalData &globalData;
 };
 
 void mainTaskLoop(void *params) {
   MainTaskParamSchema *param = static_cast<MainTaskParamSchema *>(params);
-  MotorDriver *motorDriver   = new MotorDriver(param->uselessData);
+
+  MotorPins    motorPins   = {.gpioDirectionA = RobotEnv::GPIO_DIRECTION_A,
+                              .gpioDirectionB = RobotEnv::GPIO_DIRECTION_B,
+                              .gpioPWMA       = RobotEnv::GPIO_PWM_A,
+                              .gpioPWMB       = RobotEnv::GPIO_PWM_B};
+  MotorDriver *motorDriver = new MotorDriver(motorPins);
 
   // Array de valores dos sensores (placeholder - deve ser inicializado com
   // dados reais)
