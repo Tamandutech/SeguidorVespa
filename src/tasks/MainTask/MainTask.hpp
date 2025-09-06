@@ -14,7 +14,7 @@ struct MainTaskParamSchema {
 void mainTaskLoop(void *params) {
   MainTaskParamSchema *param = static_cast<MainTaskParamSchema *>(params);
 
-  MotorPins motorPins      = {.gpioDirectionA = RobotEnv::GPIO_DIRECTION_A,
+  MotorPins    motorPins   = {.gpioDirectionA = RobotEnv::GPIO_DIRECTION_A,
                               .gpioDirectionB = RobotEnv::GPIO_DIRECTION_B,
                               .gpioPWMA       = RobotEnv::GPIO_PWM_A,
                               .gpioPWMB       = RobotEnv::GPIO_PWM_B};
