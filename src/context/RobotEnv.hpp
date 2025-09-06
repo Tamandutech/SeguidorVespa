@@ -18,6 +18,11 @@ constexpr float EPSILON_TOLERANCE =
 constexpr float INTEGRAL_MAX = 1000.0F;  // Valor máximo para o termo integral
 constexpr float INTEGRAL_MIN = -1000.0F; // Valor mínimo para o termo integral
 
+const uint8_t GPIO_DIRECTION_A = 1;
+const uint8_t GPIO_DIRECTION_B = 2;
+const uint8_t GPIO_PWM_A       = 3;
+const uint8_t GPIO_PWM_B       = 4;
+
 } // namespace RobotEnv
 
 #endif // ROBOT_ENV_HPP
