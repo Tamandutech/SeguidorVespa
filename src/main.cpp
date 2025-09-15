@@ -21,6 +21,8 @@ void app_main(void);
 }
 
 void app_main() {
+  esp_log_level_set("QTRSensors", ESP_LOG_INFO);
+
   globalData.randomNumber.store(10, std::memory_order_relaxed);
   globalData.randomChar.store('b', std::memory_order_relaxed);
   globalData.randomFloat.store(20.0F, std::memory_order_relaxed);
@@ -38,12 +40,12 @@ void app_main() {
   // 1 word = 4 bytes
   // The stack depth is setup to 60000 words, which is 240KB.
   TaskHandle_t mainTaskHandle;
-  xTaskCreatePinnedToCore(mainTaskLoop, "MainTask", 60000, &mainTaskParam, 1,
+  xTaskCreatePinnedToCore(mainTaskLoop, "MainTask", 60000, &mainTaskParam, 16,
                           &mainTaskHandle, 0); // Run on Core 0
 
   TaskHandle_t communicationTaskHandle;
   xTaskCreatePinnedToCore(communicationTaskLoop, "CommunicationTask", 60000,
-                          &communicationTaskParam, 1, &communicationTaskHandle,
+                          &communicationTaskParam, 15, &communicationTaskHandle,
                           1); // Run on Core 1
 
   for(;;) {
