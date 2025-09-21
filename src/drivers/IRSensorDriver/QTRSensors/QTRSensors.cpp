@@ -541,8 +541,6 @@ void QTRSensors::readPrivate(uint16_t *sensorValues, uint8_t start,
     return;
   }
 
-  ESP_LOGI(tag, "Lendo os sensores");
-
   switch(_type) {
   case QTRType::RC:
     for(uint8_t i = start; i < _sensorCount; i += step) {
@@ -664,7 +662,6 @@ void QTRSensors::readPrivate(uint16_t *sensorValues, uint8_t start,
         } while(err == ESP_ERR_TIMEOUT);
         sensorValues[i] += adc_raw;
       }
-      ESP_LOGI(tag, "(%d): %d", i, sensorValues[i]);
     }
 
     // get the rounded average of the readings for each sensor

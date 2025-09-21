@@ -43,18 +43,23 @@ void mainTaskLoop(void *params) {
   // };
   // PathController *pathController = new PathController(pathControllerParam);
 
+  ESP_LOGI("MainTask", "Calibrando os sensores...");
+  for(int i = 0; i < 30; i++) {
+    irSensorDriver->calibrate();
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+  }
+  ESP_LOGI("MainTask", "Sensores calibrados");
+
   for(;;) {
     uint16_t sensorValues[16];
     irSensorDriver->read(sensorValues);
-    // for(int i = 0; i < 16; i++) {
-    //   ESP_LOGI("MainTask", "Sensor %d: %d", i, sensorValues[i]);
-    // }
+
     // float pathPID = pathController->getPID();
-    // printf("Sensor Values: ");
-    // for(int i = 0; i < 16; i++) {
-    //   printf("%d ", sensorValues[i]);
-    // }
-    // printf("\n");
+    printf("Sensor Values: ");
+    for(int i = 0; i < 16; i++) {
+      printf("%d ", sensorValues[i]);
+    }
+    printf("\n");
 
     // TODO: Use motorDriver to apply PID output to motors
     // motorDriver->setSpeed(pathPID);
@@ -63,7 +68,7 @@ void mainTaskLoop(void *params) {
     (void)motorDriver;
     // (void)pathPID;
 
-    vTaskDelay(500 / portTICK_PERIOD_MS);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 }
 

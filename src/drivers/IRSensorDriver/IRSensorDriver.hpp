@@ -45,6 +45,22 @@ IRSensorDriver::IRSensorDriver(IRSensorParamSchema param)
     : pins_(param.pins), frontSensorsCount_(param.frontSensorsCount),
       sideSensorsCount_(param.sideSensorsCount),
       multiplexerPinCount_(param.multiplexerPinCount) {
+
+  // Configure GPIO_MULTIPLEXER_DIGITAL_ADDRESS pins as outputs
+  gpio_config_t io_conf = {};
+  io_conf.intr_type     = GPIO_INTR_DISABLE;
+  io_conf.mode          = GPIO_MODE_OUTPUT;
+  io_conf.pin_bit_mask  = 0;
+  io_conf.pull_down_en  = GPIO_PULLDOWN_DISABLE;
+  io_conf.pull_up_en    = GPIO_PULLUP_DISABLE;
+
+  // Set pin bit mask for all multiplexer digital address pins
+  for(int i = 0; i < multiplexerPinCount_; i++) {
+    io_conf.pin_bit_mask |= (1ULL << pins_.gpioMultiplexerDigitalAddress[i]);
+  }
+
+  gpio_config(&io_conf);
+
   sensorsArray_.setTypeMultiplexer();
   sensorsArray_.setSensorPins(param.pins.gpioMultiplexerAnalogInput,
                               param.frontSensorsCount + param.sideSensorsCount,
