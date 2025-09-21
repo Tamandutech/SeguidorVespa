@@ -27,6 +27,8 @@ public:
   IRSensorDriver(IRSensorParamSchema param);
 
   void read(uint16_t *sensor_values);
+  void readCalibrated(uint16_t *sensor_values);
+  void calibrate();
 
 private:
   IRSensorPins pins_;
@@ -34,7 +36,7 @@ private:
   uint8_t      sideSensorsCount_;
   uint8_t      multiplexerPinCount_;
 
-  QTRSensors sensorsArray;
+  QTRSensors sensorsArray_;
 
   void setMultiplexerDigitalAddress(std::bitset<4> address);
 };
@@ -43,11 +45,11 @@ IRSensorDriver::IRSensorDriver(IRSensorParamSchema param)
     : pins_(param.pins), frontSensorsCount_(param.frontSensorsCount),
       sideSensorsCount_(param.sideSensorsCount),
       multiplexerPinCount_(param.multiplexerPinCount) {
-  sensorsArray.setTypeMultiplexer();
-  sensorsArray.setSensorPins(param.pins.gpioMultiplexerAnalogInput,
-                             param.frontSensorsCount + param.sideSensorsCount,
-                             param.pins.gpioMultiplexerDigitalAddress,
-                             param.multiplexerPinCount);
+  sensorsArray_.setTypeMultiplexer();
+  sensorsArray_.setSensorPins(param.pins.gpioMultiplexerAnalogInput,
+                              param.frontSensorsCount + param.sideSensorsCount,
+                              param.pins.gpioMultiplexerDigitalAddress,
+                              param.multiplexerPinCount);
 }
 
 void IRSensorDriver::setMultiplexerDigitalAddress(std::bitset<4> address) {
@@ -65,7 +67,13 @@ void IRSensorDriver::setMultiplexerDigitalAddress(std::bitset<4> address) {
 }
 
 void IRSensorDriver::read(uint16_t *sensor_values) {
-  sensorsArray.readCalibrated(sensor_values);
+  sensorsArray_.read(sensor_values);
+}
+
+void IRSensorDriver::calibrate() { sensorsArray_.calibrate(); }
+
+void IRSensorDriver::readCalibrated(uint16_t *sensor_values) {
+  sensorsArray_.readCalibrated(sensor_values);
 }
 
 #endif // IRSENSOR_DRIVER_HPP

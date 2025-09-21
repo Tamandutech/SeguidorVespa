@@ -9,6 +9,7 @@
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <rom/ets_sys.h> // para a função ets_delay_us
 #include <stdint.h>
 
 #include "esp_log.h"

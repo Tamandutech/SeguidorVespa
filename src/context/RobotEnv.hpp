@@ -23,7 +23,7 @@ const uint8_t GPIO_DIRECTION_B = 9;
 const uint8_t GPIO_PWM_A       = 38;
 const uint8_t GPIO_PWM_B       = 3;
 
-const uint8_t GPIO_MULTIPLEXER_DIGITAL_ADDRESS[] = {42, 41, 40, 39};
+const uint8_t GPIO_MULTIPLEXER_DIGITAL_ADDRESS[] = {39, 40, 41, 42};
 const uint8_t GPIO_MULTIPLEXER_ANALOG_INPUT      = 10;
 
 } // namespace RobotEnv

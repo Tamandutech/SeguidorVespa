@@ -15,6 +15,7 @@ struct MainTaskParamSchema {
 void mainTaskLoop(void *params) {
   MainTaskParamSchema *param = static_cast<MainTaskParamSchema *>(params);
 
+
   MotorPins    motorPins   = {.gpioDirectionA = RobotEnv::GPIO_DIRECTION_A,
                               .gpioDirectionB = RobotEnv::GPIO_DIRECTION_B,
                               .gpioPWMA       = RobotEnv::GPIO_PWM_A,
@@ -28,7 +29,7 @@ void mainTaskLoop(void *params) {
                                   RobotEnv::GPIO_MULTIPLEXER_ANALOG_INPUT},
       .frontSensorsCount   = 12,
       .sideSensorsCount    = 4,
-      .multiplexerPinCount = 4
+      .multiplexerPinCount = 4,
   };
   IRSensorDriver *irSensorDriver = new IRSensorDriver(irSensorParam);
 
@@ -49,13 +50,17 @@ void mainTaskLoop(void *params) {
     //   ESP_LOGI("MainTask", "Sensor %d: %d", i, sensorValues[i]);
     // }
     // float pathPID = pathController->getPID();
-    printf("ALGUMA COISA\n");
+    // printf("Sensor Values: ");
+    // for(int i = 0; i < 16; i++) {
+    //   printf("%d ", sensorValues[i]);
+    // }
+    // printf("\n");
 
     // TODO: Use motorDriver to apply PID output to motors
     // motorDriver->setSpeed(pathPID);
 
     // Suppress unused variable warnings - these will be used for motor control
-    // (void)motorDriver;
+    (void)motorDriver;
     // (void)pathPID;
 
     vTaskDelay(500 / portTICK_PERIOD_MS);

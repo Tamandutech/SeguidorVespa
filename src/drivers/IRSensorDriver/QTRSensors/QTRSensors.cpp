@@ -20,22 +20,79 @@ void QTRSensors::setTypeAnalogESP(adc_oneshot_unit_handle_t handle) {
 void QTRSensors::setTypeMultiplexer() {
   ESP_LOGD(tag, "Definindo tipo Multiplexer");
   _type     = QTRType::Multiplexer;
-  _maxValue = 1023;
+  _maxValue = 4095;
+
+  // Initialize ADC1 handle for multiplexer mode
+  adc_oneshot_unit_init_cfg_t init_config1 = {
+      .unit_id  = ADC_UNIT_1,
+      .clk_src  = ADC_RTC_CLK_SRC_DEFAULT,
+      .ulp_mode = ADC_ULP_MODE_DISABLE,
+  };
+  ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config1, &adc1_handle));
 }
 
 void QTRSensors::setSensorPins(const uint8_t analogPin, uint8_t sensorCount,
                                const uint8_t *multiplexerPins,
                                uint8_t        multiplexerPinCount) {
-  uint8_t *pins = new uint8_t[sensorCount];
-  for(int i = 0; i < sensorCount; i++) {
-    pins[i] = analogPin;
-  }
-
+  // Store multiplexer pins
   _sensorPinsMultiplexer = new uint8_t[multiplexerPinCount];
   for(int i = 0; i < multiplexerPinCount; i++) {
     _sensorPinsMultiplexer[i] = multiplexerPins[i];
   }
-  setSensorPins(pins, sensorCount);
+
+  // Convert GPIO pin to ADC channel and configure for ESP32
+  if(sensorCount > QTRMaxSensors) {
+    sensorCount = QTRMaxSensors;
+  }
+
+  adc_channel_t *oldSensorPins = _sensorPinsESP;
+
+  _sensorPinsESP = (adc_channel_t *)heap_caps_realloc(
+      _sensorPinsESP, sizeof(adc_channel_t) * sensorCount, MALLOC_CAP_8BIT);
+
+  adc_oneshot_chan_cfg_t ADCconfig = {
+      .atten    = ADC_ATTEN_DB_12,
+      .bitwidth = ADC_BITWIDTH_12,
+  };
+
+  if(_sensorPinsESP == nullptr) {
+    heap_caps_free(oldSensorPins);
+    return;
+  }
+
+  // Convert GPIO pin to ADC channel (ESP32-S3 ADC1 mapping)
+  adc_channel_t adc_channel;
+  switch(analogPin) {
+  case 1: adc_channel = ADC_CHANNEL_0; break;
+  case 2: adc_channel = ADC_CHANNEL_1; break;
+  case 3: adc_channel = ADC_CHANNEL_2; break;
+  case 4: adc_channel = ADC_CHANNEL_3; break;
+  case 5: adc_channel = ADC_CHANNEL_4; break;
+  case 6: adc_channel = ADC_CHANNEL_5; break;
+  case 7: adc_channel = ADC_CHANNEL_6; break;
+  case 8: adc_channel = ADC_CHANNEL_7; break;
+  case 9: adc_channel = ADC_CHANNEL_8; break;
+  case 10: adc_channel = ADC_CHANNEL_9; break;
+  default:
+    ESP_LOGE(
+        tag,
+        "Invalid GPIO pin %d for ADC1. Only GPIO 1-10 are supported on ADC1",
+        analogPin);
+    heap_caps_free(_sensorPinsESP);
+    return;
+  }
+
+  for(uint8_t i = 0; i < sensorCount; i++) {
+    _sensorPinsESP[i] = adc_channel;
+
+    ESP_ERROR_CHECK(
+        adc_oneshot_config_channel(adc1_handle, _sensorPinsESP[i], &ADCconfig));
+  }
+
+  _sensorCount = sensorCount;
+
+  calibrationOn.initialized  = false;
+  calibrationOff.initialized = false;
 }
 
 void QTRSensors::setSensorPins(const adc_channel_t *pins, uint8_t sensorCount) {
@@ -49,7 +106,7 @@ void QTRSensors::setSensorPins(const adc_channel_t *pins, uint8_t sensorCount) {
       _sensorPinsESP, sizeof(adc_channel_t) * sensorCount, MALLOC_CAP_8BIT);
 
   adc_oneshot_chan_cfg_t ADCconfig = {
-      .atten    = ADC_ATTEN_DB_11,
+      .atten    = ADC_ATTEN_DB_12,
       .bitwidth = ADC_BITWIDTH_12,
   };
 
@@ -484,6 +541,8 @@ void QTRSensors::readPrivate(uint16_t *sensorValues, uint8_t start,
     return;
   }
 
+  ESP_LOGI(tag, "Lendo os sensores");
+
   switch(_type) {
   case QTRType::RC:
     for(uint8_t i = start; i < _sensorCount; i += step) {
@@ -589,22 +648,23 @@ void QTRSensors::readPrivate(uint16_t *sensorValues, uint8_t start,
     }
 
 
-    for(uint8_t j = 0; j < _samplesPerSensor; j++) {
-      for(uint8_t i = start; i < _sensorCount; i += step) {
-        setMultiplexerDigitalAddress(std::bitset<4>(
-            i)); // Passa o valor i em formato 4 bits para selecionar o sensor
-        // add the conversion result
+    for(uint8_t i = start; i < _sensorCount; i += step) {
+      setMultiplexerDigitalAddress(std::bitset<4>(
+          i)); // Passa o valor i em formato 4 bits para selecionar o sensor
+
+      vTaskDelay(10 / portTICK_PERIOD_MS);
+
+      for(uint8_t j = 0; j < _samplesPerSensor; j++) {
         int       adc_raw;
         esp_err_t err;
         do {
           err = adc_oneshot_read(adc1_handle, (adc_channel_t)_sensorPinsESP[i],
                                  &adc_raw);
-          ESP_LOGI(tag, "Multiplexer: %d", _sensorPinsESP[i]);
-          printf("Multiplexer: %d\n", _sensorPinsESP[i]);
           ESP_ERROR_CHECK_WITHOUT_ABORT(err);
         } while(err == ESP_ERR_TIMEOUT);
         sensorValues[i] += adc_raw;
       }
+      ESP_LOGI(tag, "(%d): %d", i, sensorValues[i]);
     }
 
     // get the rounded average of the readings for each sensor
@@ -663,6 +723,11 @@ uint16_t QTRSensors::readLinePrivate(uint16_t *sensorValues, QTRReadMode mode,
 // the destructor frees up allocated memory
 QTRSensors::~QTRSensors() {
   releaseEmitterPins();
+
+  // Clean up ADC handle if it was initialized
+  if(adc1_handle != nullptr) {
+    adc_oneshot_del_unit(adc1_handle);
+  }
 
   if(_sensorPins) {
     heap_caps_free(_sensorPins);
