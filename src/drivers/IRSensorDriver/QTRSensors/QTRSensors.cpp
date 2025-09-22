@@ -650,8 +650,6 @@ void QTRSensors::readPrivate(uint16_t *sensorValues, uint8_t start,
       setMultiplexerDigitalAddress(std::bitset<4>(
           i)); // Passa o valor i em formato 4 bits para selecionar o sensor
 
-      vTaskDelay(10 / portTICK_PERIOD_MS);
-
       for(uint8_t j = 0; j < _samplesPerSensor; j++) {
         int       adc_raw;
         esp_err_t err;
