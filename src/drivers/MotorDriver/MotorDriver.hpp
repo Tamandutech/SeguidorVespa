@@ -55,8 +55,7 @@ MotorDriver::MotorDriver(MotorPins pin) : pin_(pin) {
   io_conf.intr_type = (gpio_int_type_t)GPIO_INTR_DISABLE;
   io_conf.mode      = GPIO_MODE_OUTPUT;
   io_conf.pin_bit_mask =
-      ((1ULL << pin_.gpioDirectionA) | (1ULL << pin_.gpioDirectionB) |
-       (1ULL << pin_.gpioPWMA) | (1ULL << pin_.gpioPWMB));
+      ((1ULL << pin_.gpioDirectionA) | (1ULL << pin_.gpioDirectionB));
   io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
   io_conf.pull_up_en   = GPIO_PULLUP_DISABLE;
   gpio_config(&io_conf);
