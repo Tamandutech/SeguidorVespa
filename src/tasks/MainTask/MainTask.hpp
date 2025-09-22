@@ -3,8 +3,10 @@
 
 #include "context/GlobalData.hpp"
 
+#include "drivers/EncoderDriver/EncoderDriver.hpp"
 #include "drivers/IRSensorDriver/IRSensorDriver.hpp"
 #include "drivers/MotorDriver/MotorDriver.hpp"
+#include "drivers/VacuumDriver/VacuumDriver.hpp"
 
 #include "tasks/MainTask/PathController/PathController.hpp"
 
@@ -32,6 +34,17 @@ void mainTaskLoop(void *params) {
       .multiplexerPinCount = 4,
   };
   IRSensorDriver *irSensorDriver = new IRSensorDriver(irSensorParam);
+
+  EncoderDriver *encoderLeftDriver  = new EncoderDriver();
+  EncoderDriver *encoderRightDriver = new EncoderDriver();
+
+  encoderLeftDriver->attachFullQuad(RobotEnv::GPIO_ENCODER_LEFT_A,
+                                    RobotEnv::GPIO_ENCODER_LEFT_B);
+  encoderRightDriver->attachFullQuad(RobotEnv::GPIO_ENCODER_RIGHT_A,
+                                     RobotEnv::GPIO_ENCODER_RIGHT_B);
+
+  VacuumPins    vacuumPins   = {.gpioPWM = RobotEnv::GPIO_PWM_VACUUM};
+  VacuumDriver *vacuumDriver = new VacuumDriver(vacuumPins);
 
   // PathControllerParamSchema pathControllerParam = {
   //     .constants      = {.kP = 0.1F, .kI = 0.01F, .kD = 0.001F},
@@ -66,6 +79,9 @@ void mainTaskLoop(void *params) {
 
     // Suppress unused variable warnings - these will be used for motor control
     (void)motorDriver;
+    (void)encoderLeftDriver;
+    (void)encoderRightDriver;
+    (void)vacuumDriver;
     // (void)pathPID;
 
     vTaskDelay(100 / portTICK_PERIOD_MS);
