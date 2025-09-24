@@ -18,20 +18,25 @@ constexpr float EPSILON_TOLERANCE =
 constexpr float INTEGRAL_MAX = 1000.0F;  // Valor máximo para o termo integral
 constexpr float INTEGRAL_MIN = -1000.0F; // Valor mínimo para o termo integral
 
-const uint8_t GPIO_DIRECTION_A = 37;
-const uint8_t GPIO_DIRECTION_B = 9;
-const uint8_t GPIO_PWM_A       = 38;
-const uint8_t GPIO_PWM_B       = 3;
+const uint8_t GPIO_LED_DEBUG = 47;
+
+const uint8_t GPIO_DIRECTION_A = 9;
+const uint8_t GPIO_DIRECTION_B = 37;
+const uint8_t GPIO_PWM_A       = 3;
+const uint8_t GPIO_PWM_B       = 38;
 
 const uint8_t GPIO_PWM_VACUUM = 11;
 
-const uint8_t GPIO_ENCODER_LEFT_A  = 6;
-const uint8_t GPIO_ENCODER_LEFT_B  = 7;
+const uint8_t GPIO_ENCODER_LEFT_A  = 7;
+const uint8_t GPIO_ENCODER_LEFT_B  = 6;
 const uint8_t GPIO_ENCODER_RIGHT_A = 12;
 const uint8_t GPIO_ENCODER_RIGHT_B = 13;
 
-const uint8_t GPIO_MULTIPLEXER_DIGITAL_ADDRESS[] = {39, 40, 41, 42};
-const uint8_t GPIO_MULTIPLEXER_ANALOG_INPUT      = 10;
+const uint8_t GPIO_MULTIPLEXER_DIGITAL_ADDRESS[]    = {39, 40, 41, 42};
+const uint8_t GPIO_MULTIPLEXER_ANALOG_INPUT         = 10;
+const uint8_t GPIO_MULTIPLEXER_LINE_SENSORS_INDEX[] = {0, 1, 2,  3,  4,  5,
+                                                       8, 9, 10, 11, 12, 13};
+const uint8_t GPIO_MULTIPLEXER_SIDE_SENSORS_INDEX[] = {15, 14, 6, 7};
 
 } // namespace RobotEnv
 

@@ -1,6 +1,8 @@
 #ifndef MOTOR_DRIVER_HPP
 #define MOTOR_DRIVER_HPP
 
+#include <cmath>
+
 #include "esp_attr.h"
 #include "esp_system.h"
 
@@ -32,8 +34,9 @@ public:
   void pwmOutput(int32_t valueA, int32_t valueB);
 
 private:
-  const char *tag = "MotorDriver";
-  MotorPins   pin_;
+  const char   *tag = "MotorDriver";
+  MotorPins     pin_;
+  const int32_t maxValue;
 
   void initMotorPWM(gpio_num_t pin, ledc_channel_t channel);
 };
@@ -50,7 +53,8 @@ void MotorDriver::initMotorPWM(gpio_num_t pin, ledc_channel_t channel) {
   ledc_channel_config(&ledc_channel);
 }
 
-MotorDriver::MotorDriver(MotorPins pin) : pin_(pin) {
+MotorDriver::MotorDriver(MotorPins pin)
+    : pin_(pin), maxValue(pow(2, LEDC_DUTY_RES) - 1) {
   gpio_config_t io_conf;
   io_conf.intr_type = (gpio_int_type_t)GPIO_INTR_DISABLE;
   io_conf.mode      = GPIO_MODE_OUTPUT;
@@ -83,18 +87,28 @@ MotorDriver::MotorDriver(MotorPins pin) : pin_(pin) {
 }
 
 void MotorDriver::pwmOutput(int32_t valueA, int32_t valueB) {
-  if(valueA > 0) {
+  // Clamp input values to (-100, 100) range
+  valueA = (valueA > 100) ? 100 : (valueA < -100) ? -100 : valueA;
+  valueB = (valueB > 100) ? 100 : (valueB < -100) ? -100 : valueB;
+
+  // Map from (-100, 100) to (-maxValue, maxValue)
+  int32_t mappedValueA = (valueA * maxValue) / 100;
+  int32_t mappedValueB = (valueB * maxValue) / 100;
+
+  if(mappedValueA > 0) {
     gpio_set_level(static_cast<gpio_num_t>(pin_.gpioDirectionA), 1);
   } else {
     gpio_set_level(static_cast<gpio_num_t>(pin_.gpioDirectionA), 0);
   }
-  if(valueB > 0) {
+  if(mappedValueB > 0) {
     gpio_set_level(static_cast<gpio_num_t>(pin_.gpioDirectionB), 1);
   } else {
     gpio_set_level(static_cast<gpio_num_t>(pin_.gpioDirectionB), 0);
   }
-  ledc_set_duty(LEDC_MODE, PWM_A_PIN, valueA);
-  ledc_set_duty(LEDC_MODE, PWM_B_PIN, valueB);
+
+  // Use absolute values for PWM duty cycle
+  ledc_set_duty(LEDC_MODE, PWM_A_PIN, abs(mappedValueA));
+  ledc_set_duty(LEDC_MODE, PWM_B_PIN, abs(mappedValueB));
   ledc_update_duty(LEDC_MODE, PWM_A_PIN);
   ledc_update_duty(LEDC_MODE, PWM_B_PIN);
 }

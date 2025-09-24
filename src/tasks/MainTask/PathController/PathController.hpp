@@ -26,7 +26,7 @@ struct PathControllerConstants {
 struct PathControllerParamSchema {
   const PathControllerConstants constants; // Constantes do controlador PID
   const size_t   sensorQuantity;           // Quantidade de sensores de linha
-  const int     *sensorValues;   // Ponteiro para array de valores dos sensores
+  uint16_t      *sensorValues;   // Ponteiro para array de valores dos sensores
   const float    maxAngle;       // Ângulo máximo em graus
   const uint16_t radiusSensor;   // Raio dos sensores
   const uint16_t sensorToCenter; // Distância do sensor ao centro
@@ -53,7 +53,7 @@ private:
   PathControllerConstants constants_; // Constantes do controlador PID
 
   const size_t sensorQuantity_;       // Quantidade de sensores de linha
-  const int   *sensorValues_; // Ponteiro para array de valores dos sensores
+  uint16_t    *sensorValues_; // Ponteiro para array de valores dos sensores
 
   // Parâmetros geométricos para cálculo do ângulo
   const float    maxAngle_;       // Ângulo máximo em radianos
@@ -105,7 +105,7 @@ float PathController::getLinePosition() {
   // Lê os valores dos sensores do array sensorValues_
   for(size_t i = 0; i < sensorQuantity_; i++) {
     // Lê o valor real do sensor do array
-    int sensorValue = sensorValues_[i];
+    uint16_t sensorValue = sensorValues_[i];
 
     // Aplica a mesma lógica do QTRwithMUX::read_all()
     if(sensorValue > 200) {
@@ -210,8 +210,9 @@ float PathController::getPID() {
   float derivative = error - lastError_;
   lastError_       = error;
 
-  return constants_.kP * error + constants_.kI * integralSummation_ +
-         constants_.kD * derivative;
+  // return constants_.kP * error + constants_.kI * integralSummation_ +
+  //        constants_.kD * derivative;
+  return constants_.kP * error + constants_.kD * derivative;
 }
 
 #endif // PATH_CONTROLLER_HPP

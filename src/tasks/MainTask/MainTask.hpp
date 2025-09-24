@@ -17,6 +17,9 @@ struct MainTaskParamSchema {
 void mainTaskLoop(void *params) {
   MainTaskParamSchema *param = static_cast<MainTaskParamSchema *>(params);
 
+  uint16_t sensorValuesRaw[16];
+  uint16_t sideSensorValues[4];
+  uint16_t lineSensorValues[12];
 
   MotorPins    motorPins   = {.gpioDirectionA = RobotEnv::GPIO_DIRECTION_A,
                               .gpioDirectionB = RobotEnv::GPIO_DIRECTION_B,
@@ -25,12 +28,16 @@ void mainTaskLoop(void *params) {
   MotorDriver *motorDriver = new MotorDriver(motorPins);
 
   IRSensorParamSchema irSensorParam = {
-      .pins                = {.gpioMultiplexerDigitalAddress =
-                                  RobotEnv::GPIO_MULTIPLEXER_DIGITAL_ADDRESS,
-                              .gpioMultiplexerAnalogInput =
-                                  RobotEnv::GPIO_MULTIPLEXER_ANALOG_INPUT},
-      .frontSensorsCount   = 12,
-      .sideSensorsCount    = 4,
+      .pins             = {.gpioMultiplexerDigitalAddress =
+                               RobotEnv::GPIO_MULTIPLEXER_DIGITAL_ADDRESS,
+                           .gpioMultiplexerAnalogInput =
+                               RobotEnv::GPIO_MULTIPLEXER_ANALOG_INPUT},
+      .lineSensorsCount = 12,
+      .lineSensorsMultiplexerIndex =
+          RobotEnv::GPIO_MULTIPLEXER_LINE_SENSORS_INDEX,
+      .sideSensorsCount = 4,
+      .sideSensorsMultiplexerIndex =
+          RobotEnv::GPIO_MULTIPLEXER_SIDE_SENSORS_INDEX,
       .multiplexerPinCount = 4,
   };
   IRSensorDriver *irSensorDriver = new IRSensorDriver(irSensorParam);
@@ -46,15 +53,15 @@ void mainTaskLoop(void *params) {
   VacuumPins    vacuumPins   = {.gpioPWM = RobotEnv::GPIO_PWM_VACUUM};
   VacuumDriver *vacuumDriver = new VacuumDriver(vacuumPins);
 
-  // PathControllerParamSchema pathControllerParam = {
-  //     .constants      = {.kP = 0.1F, .kI = 0.01F, .kD = 0.001F},
-  //     .sensorQuantity = 12,
-  //     .sensorValues   = &sensorValues[0],
-  //     .maxAngle       = 45.0F, // Ângulo máximo de 45 graus
-  //     .radiusSensor   = 100, // Raio dos sensores em mm
-  //     .sensorToCenter = 50, // Distância do sensor ao centro em mm
-  // };
-  // PathController *pathController = new PathController(pathControllerParam);
+  PathControllerParamSchema pathControllerParam = {
+      .constants      = {.kP = 0.1F, .kI = 0.01F, .kD = 0.001F},
+      .sensorQuantity = 12,
+      .sensorValues   = lineSensorValues,
+      .maxAngle       = 45.0F, // Ângulo máximo de 45 graus
+      .radiusSensor   = 100, // Raio dos sensores em mm
+      .sensorToCenter = 50, // Distância do sensor ao centro em mm
+  };
+  PathController *pathController = new PathController(pathControllerParam);
 
   ESP_LOGI("MainTask", "Calibrando os sensores...");
   for(int i = 0; i < 30; i++) {
@@ -64,20 +71,37 @@ void mainTaskLoop(void *params) {
   ESP_LOGI("MainTask", "Sensores calibrados");
 
   for(;;) {
-    uint16_t sensorValues[16];
-    irSensorDriver->read(sensorValues);
+    // irSensorDriver->read(sensorValuesRaw);
+    // for(int i = 0; i < 16; i++) {
+    //   printf("%2d:", i);
+    //   printf("%4d ", sensorValuesRaw[i]);
+    // }
+    // printf("\n");
 
-    // float pathPID = pathController->getPID();
-    printf("Sensor Values: ");
-    for(int i = 0; i < 16; i++) {
-      printf("%d ", sensorValues[i]);
+    irSensorDriver->readCalibrated(lineSensorValues, sideSensorValues);
+
+    float pathPID = pathController->getPID();
+    printf("L: ");
+    for(int i = 0; i < 12; i++) {
+      printf("%4d ", lineSensorValues[i]);
+    }
+    printf("S: ");
+    for(int i = 0; i < 4; i++) {
+      printf("%4d ", sideSensorValues[i]);
     }
     printf("\n");
+    printf("Path PID: %f\n", pathPID);
+
+    // motorDriver->pwmOutput(8000, 0);
+    // vacuumDriver->pwmOutput(8000);
+    // printf("Encoder Left: %ld\n", encoderLeftDriver->getCount());
+    // printf("Encoder Right: %ld\n", encoderRightDriver->getCount());
 
     // TODO: Use motorDriver to apply PID output to motors
     // motorDriver->setSpeed(pathPID);
 
-    // Suppress unused variable warnings - these will be used for motor control
+    // Suppress unused variable warnings - these will be used for motor
+    // control
     (void)motorDriver;
     (void)encoderLeftDriver;
     (void)encoderRightDriver;
