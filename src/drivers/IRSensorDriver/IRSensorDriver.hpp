@@ -17,34 +17,45 @@ struct IRSensorPins {
 
 struct IRSensorParamSchema {
   const IRSensorPins pins;
-  const uint8_t      frontSensorsCount;
+  const uint8_t      lineSensorsCount;
+  const uint8_t     *lineSensorsMultiplexerIndex;
   const uint8_t      sideSensorsCount;
+  const uint8_t     *sideSensorsMultiplexerIndex;
   const uint8_t      multiplexerPinCount;
 };
 
 class IRSensorDriver {
 public:
   IRSensorDriver(IRSensorParamSchema param);
+  ~IRSensorDriver();
 
   void read(uint16_t *sensor_values);
-  void readCalibrated(uint16_t *sensor_values);
+  void readCalibrated(uint16_t *line_sensor_values,
+                      uint16_t *side_sensor_values);
   void calibrate();
 
 private:
-  IRSensorPins pins_;
-  uint8_t      frontSensorsCount_;
-  uint8_t      sideSensorsCount_;
-  uint8_t      multiplexerPinCount_;
+  IRSensorPins   pins_;
+  const uint8_t  lineSensorsCount_;
+  const uint8_t *lineSensorsMultiplexerIndex_;
+  const uint8_t  sideSensorsCount_;
+  const uint8_t *sideSensorsMultiplexerIndex_;
+  uint8_t        multiplexerPinCount_;
 
   QTRSensors sensorsArray_;
+  uint16_t  *sensorValues_;
 
   void setMultiplexerDigitalAddress(std::bitset<4> address);
 };
 
 IRSensorDriver::IRSensorDriver(IRSensorParamSchema param)
-    : pins_(param.pins), frontSensorsCount_(param.frontSensorsCount),
+    : pins_(param.pins), lineSensorsCount_(param.lineSensorsCount),
+      lineSensorsMultiplexerIndex_(param.lineSensorsMultiplexerIndex),
       sideSensorsCount_(param.sideSensorsCount),
-      multiplexerPinCount_(param.multiplexerPinCount) {
+      sideSensorsMultiplexerIndex_(param.sideSensorsMultiplexerIndex),
+      multiplexerPinCount_(param.multiplexerPinCount),
+      sensorValues_((uint16_t *)calloc(lineSensorsCount_ + sideSensorsCount_,
+                                       sizeof(uint16_t))) {
 
   // Configure GPIO_MULTIPLEXER_DIGITAL_ADDRESS pins as outputs
   gpio_config_t io_conf = {};
@@ -63,10 +74,12 @@ IRSensorDriver::IRSensorDriver(IRSensorParamSchema param)
 
   sensorsArray_.setTypeMultiplexer();
   sensorsArray_.setSensorPins(param.pins.gpioMultiplexerAnalogInput,
-                              param.frontSensorsCount + param.sideSensorsCount,
+                              param.lineSensorsCount + param.sideSensorsCount,
                               param.pins.gpioMultiplexerDigitalAddress,
                               param.multiplexerPinCount);
 }
+
+IRSensorDriver::~IRSensorDriver() { free(sensorValues_); }
 
 void IRSensorDriver::setMultiplexerDigitalAddress(std::bitset<4> address) {
   // Função que controla qual sensor está conectado ao ESP32
@@ -88,8 +101,15 @@ void IRSensorDriver::read(uint16_t *sensor_values) {
 
 void IRSensorDriver::calibrate() { sensorsArray_.calibrate(); }
 
-void IRSensorDriver::readCalibrated(uint16_t *sensor_values) {
-  sensorsArray_.readCalibrated(sensor_values);
+void IRSensorDriver::readCalibrated(uint16_t *line_sensor_values,
+                                    uint16_t *side_sensor_values) {
+  sensorsArray_.readCalibrated(sensorValues_);
+  for(int i = 0; i < (lineSensorsCount_); i++) {
+    line_sensor_values[i] = sensorValues_[lineSensorsMultiplexerIndex_[i]];
+  }
+  for(int i = 0; i < (sideSensorsCount_); i++) {
+    side_sensor_values[i] = sensorValues_[sideSensorsMultiplexerIndex_[i]];
+  }
 }
 
 #endif // IRSENSOR_DRIVER_HPP
