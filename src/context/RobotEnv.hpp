@@ -11,6 +11,9 @@ const float MAX_SPEED          = 4;
 const float MAX_DECELERATION   = 4;
 const float MAX_ROTATION_SPEED = 4;
 
+const int32_t BASE_MOTOR_PWM  = 10;
+const int32_t BASE_VACUUM_PWM = 10;
+
 constexpr float EPSILON_TOLERANCE =
     1e-6F; // Tolerância para comparações de ponto flutuante
 
@@ -34,8 +37,8 @@ const uint8_t GPIO_ENCODER_RIGHT_B = 13;
 
 const uint8_t GPIO_MULTIPLEXER_DIGITAL_ADDRESS[]    = {39, 40, 41, 42};
 const uint8_t GPIO_MULTIPLEXER_ANALOG_INPUT         = 10;
-const uint8_t GPIO_MULTIPLEXER_LINE_SENSORS_INDEX[] = {0, 1, 2,  3,  4,  5,
-                                                       8, 9, 10, 11, 12, 13};
+const uint8_t GPIO_MULTIPLEXER_LINE_SENSORS_INDEX[] = {13, 12, 11, 10, 9, 8,
+                                                       5,  4,  3,  2,  1, 0};
 const uint8_t GPIO_MULTIPLEXER_SIDE_SENSORS_INDEX[] = {15, 14, 6, 7};
 
 } // namespace RobotEnv

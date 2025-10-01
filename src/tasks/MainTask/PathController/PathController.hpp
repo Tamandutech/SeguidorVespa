@@ -107,6 +107,8 @@ float PathController::getLinePosition() {
     // Lê o valor real do sensor do array
     uint16_t sensorValue = sensorValues_[i];
 
+    sensorValue = 1000 - sensorValue;
+
     // Aplica a mesma lógica do QTRwithMUX::read_all()
     if(sensorValue > 200) {
       onLine = true;       // verifica se tem um sensor na linha
@@ -195,7 +197,12 @@ float PathController::getLineAngle() {
  * @return Valor de correção para os motores (normalizado)
  */
 float PathController::getPID() {
-  float error = getLineAngle();
+  float error = static_cast<float>(getLinePosition());
+
+  // Subtrai a metade do valor máximo para centralizar a posição em 0
+  // Para 16 sensores: vai de 0 a 15000, após subtração vai de -7500 a +7500
+  error = error - ((sensorQuantity_ - 1) * 500);
+  // printf("Error: %f\n", error);
 
   // Adiciona o erro ao termo integral
   integralSummation_ += error;

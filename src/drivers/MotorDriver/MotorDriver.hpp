@@ -96,14 +96,14 @@ void MotorDriver::pwmOutput(int32_t valueA, int32_t valueB) {
   int32_t mappedValueB = (valueB * maxValue) / 100;
 
   if(mappedValueA > 0) {
-    gpio_set_level(static_cast<gpio_num_t>(pin_.gpioDirectionA), 1);
-  } else {
     gpio_set_level(static_cast<gpio_num_t>(pin_.gpioDirectionA), 0);
+  } else {
+    gpio_set_level(static_cast<gpio_num_t>(pin_.gpioDirectionA), 1);
   }
   if(mappedValueB > 0) {
-    gpio_set_level(static_cast<gpio_num_t>(pin_.gpioDirectionB), 1);
-  } else {
     gpio_set_level(static_cast<gpio_num_t>(pin_.gpioDirectionB), 0);
+  } else {
+    gpio_set_level(static_cast<gpio_num_t>(pin_.gpioDirectionB), 1);
   }
 
   // Use absolute values for PWM duty cycle

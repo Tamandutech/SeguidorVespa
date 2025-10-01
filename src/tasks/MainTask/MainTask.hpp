@@ -17,7 +17,7 @@ struct MainTaskParamSchema {
 void mainTaskLoop(void *params) {
   MainTaskParamSchema *param = static_cast<MainTaskParamSchema *>(params);
 
-  uint16_t sensorValuesRaw[16];
+  // uint16_t sensorValuesRaw[16];
   uint16_t sideSensorValues[4];
   uint16_t lineSensorValues[12];
 
@@ -54,7 +54,7 @@ void mainTaskLoop(void *params) {
   VacuumDriver *vacuumDriver = new VacuumDriver(vacuumPins);
 
   PathControllerParamSchema pathControllerParam = {
-      .constants      = {.kP = 0.1F, .kI = 0.01F, .kD = 0.001F},
+      .constants      = {.kP = 0.01F, .kI = 0.00F, .kD = 0.19F},
       .sensorQuantity = 12,
       .sensorValues   = lineSensorValues,
       .maxAngle       = 45.0F, // Ângulo máximo de 45 graus
@@ -64,13 +64,16 @@ void mainTaskLoop(void *params) {
   PathController *pathController = new PathController(pathControllerParam);
 
   ESP_LOGI("MainTask", "Calibrando os sensores...");
-  for(int i = 0; i < 30; i++) {
+  for(int i = 0; i < 50; i++) {
     irSensorDriver->calibrate();
     vTaskDelay(100 / portTICK_PERIOD_MS);
   }
   ESP_LOGI("MainTask", "Sensores calibrados");
 
+  vTaskDelay(5000 / portTICK_PERIOD_MS);
+
   for(;;) {
+    printf("\033[2J\033[H");
     // irSensorDriver->read(sensorValuesRaw);
     // for(int i = 0; i < 16; i++) {
     //   printf("%2d:", i);
@@ -81,19 +84,27 @@ void mainTaskLoop(void *params) {
     irSensorDriver->readCalibrated(lineSensorValues, sideSensorValues);
 
     float pathPID = pathController->getPID();
-    printf("L: ");
-    for(int i = 0; i < 12; i++) {
-      printf("%4d ", lineSensorValues[i]);
-    }
-    printf("S: ");
-    for(int i = 0; i < 4; i++) {
-      printf("%4d ", sideSensorValues[i]);
-    }
-    printf("\n");
-    printf("Path PID: %f\n", pathPID);
 
-    // motorDriver->pwmOutput(8000, 0);
-    // vacuumDriver->pwmOutput(8000);
+    // printf("L: ");
+    // for(int i = 0; i < 12; i++) {
+    //   printf("%4d ", lineSensorValues[i]);
+    // }
+    // printf("S: ");
+    // for(int i = 0; i < 4; i++) {
+    //   printf("%4d ", sideSensorValues[i]);
+    // }
+    // printf("\n");
+    // printf("Path PID: %f\n", pathPID);
+
+    motorDriver->pwmOutput(RobotEnv::BASE_MOTOR_PWM + pathPID,
+                           RobotEnv::BASE_MOTOR_PWM - pathPID);
+
+    // motorDriver->pwmOutput(RobotEnv::BASE_MOTOR_PWM - pathPID,
+    //                        RobotEnv::BASE_MOTOR_PWM + pathPID); // teste
+    //                        semreh
+
+    // motorDriver->pwmOutput(0, 0);
+    // vacuumDriver->pwmOutput(RobotEnv::BASE_VACUUM_PWM);
     // printf("Encoder Left: %ld\n", encoderLeftDriver->getCount());
     // printf("Encoder Right: %ld\n", encoderRightDriver->getCount());
 
@@ -108,7 +119,7 @@ void mainTaskLoop(void *params) {
     (void)vacuumDriver;
     // (void)pathPID;
 
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+    vTaskDelay(1 / portTICK_PERIOD_MS);
   }
 }
 

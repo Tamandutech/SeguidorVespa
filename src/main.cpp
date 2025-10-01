@@ -39,14 +39,16 @@ void app_main() {
   // Task
   // 1 word = 4 bytes
   // The stack depth is setup to 60000 words, which is 240KB.
-  TaskHandle_t mainTaskHandle;
-  xTaskCreatePinnedToCore(mainTaskLoop, "MainTask", 60000, &mainTaskParam, 16,
-                          &mainTaskHandle, 0); // Run on Core 0
-
+  // Core 0 Protocol
+  // Core 1 Application
   TaskHandle_t communicationTaskHandle;
   xTaskCreatePinnedToCore(communicationTaskLoop, "CommunicationTask", 60000,
                           &communicationTaskParam, 15, &communicationTaskHandle,
-                          1); // Run on Core 1
+                          0); // Run on Core 0
+  TaskHandle_t mainTaskHandle;
+  xTaskCreatePinnedToCore(mainTaskLoop, "MainTask", 60000, &mainTaskParam, 16,
+                          &mainTaskHandle, 1); // Run on Core 1
+
 
   for(;;) {
     vTaskSuspend(NULL);

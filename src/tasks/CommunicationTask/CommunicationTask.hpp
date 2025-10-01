@@ -1,6 +1,8 @@
 #ifndef COMMUNICATION_TASK_HPP
 #define COMMUNICATION_TASK_HPP
 
+#include <nimble-nordic-uart.h>
+
 #include "context/GlobalData.hpp"
 
 struct CommunicationTaskParamSchema {

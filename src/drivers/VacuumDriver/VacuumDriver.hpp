@@ -28,8 +28,9 @@ public:
   void pwmOutput(int32_t value);
 
 private:
-  const char *tag = "VacuumDriver";
-  VacuumPins  pin_;
+  const char   *tag = "VacuumDriver";
+  VacuumPins    pin_;
+  const int32_t maxValue;
 
   void initMotorPWM(gpio_num_t pin, ledc_channel_t channel);
 };
@@ -46,7 +47,8 @@ void VacuumDriver::initMotorPWM(gpio_num_t pin, ledc_channel_t channel) {
   ledc_channel_config(&ledc_channel);
 }
 
-VacuumDriver::VacuumDriver(VacuumPins pin) : pin_(pin) {
+VacuumDriver::VacuumDriver(VacuumPins pin)
+    : pin_(pin), maxValue(pow(2, LEDC_DUTY_RES) - 1) {
   // Configure LEDC timer once
   ledc_timer_config_t ledc_timer = {
       .speed_mode      = LEDC_MODE,
@@ -67,7 +69,13 @@ VacuumDriver::VacuumDriver(VacuumPins pin) : pin_(pin) {
 }
 
 void VacuumDriver::pwmOutput(int32_t value) {
-  ledc_set_duty(LEDC_MODE, PWM_PIN, value);
+  // Clamp input values to (-100, 100) range
+  value = (value > 100) ? 100 : (value < 0) ? 0 : value;
+
+  // Map from (-100, 100) to (-maxValue, maxValue)
+  int32_t mappedValue = (value * maxValue) / 100;
+
+  ledc_set_duty(LEDC_MODE, PWM_PIN, mappedValue);
   ledc_update_duty(LEDC_MODE, PWM_PIN);
 }
 
