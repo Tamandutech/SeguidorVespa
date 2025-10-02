@@ -1,3 +1,6 @@
+#ifndef NIMBLE_NORDIC_UART_H
+#define NIMBLE_NORDIC_UART_H
+
 #pragma once
 
 #include <stdint.h>
@@ -53,3 +56,5 @@ esp_err_t _nordic_uart_start(
     void (*callback)(enum nordic_uart_callback_type callback_type));
 esp_err_t _nordic_uart_stop(void);
 esp_err_t _nordic_uart_send(const char *message);
+
+#endif // NIMBLE_NORDIC_UART_H

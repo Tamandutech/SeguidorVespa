@@ -17,6 +17,9 @@ struct MainTaskParamSchema {
 void mainTaskLoop(void *params) {
   MainTaskParamSchema *param = static_cast<MainTaskParamSchema *>(params);
 
+  int32_t finishLineCount =
+      param->globalData.finishLineCount.load(std::memory_order_relaxed);
+
   // uint16_t sensorValuesRaw[16];
   uint16_t sideSensorValues[4];
   uint16_t lineSensorValues[12];
@@ -73,18 +76,32 @@ void mainTaskLoop(void *params) {
   vTaskDelay(5000 / portTICK_PERIOD_MS);
 
   for(;;) {
-    printf("\033[2J\033[H");
-    // irSensorDriver->read(sensorValuesRaw);
-    // for(int i = 0; i < 16; i++) {
-    //   printf("%2d:", i);
-    //   printf("%4d ", sensorValuesRaw[i]);
-    // }
-    // printf("\n");
+    if(!param->globalData.isReadyToRun.load(std::memory_order_relaxed)) {
+      motorDriver->pwmOutput(0, 0);
+      vacuumDriver->pwmOutput(0);
+      vTaskDelay(100 / portTICK_PERIOD_MS);
+      continue;
+    }
 
-    irSensorDriver->readCalibrated(lineSensorValues, sideSensorValues);
+    int32_t encoderAverage =
+        (encoderLeftDriver->getCount() + encoderRightDriver->getCount()) / 2;
 
-    float pathPID = pathController->getPID();
+    if(encoderAverage > finishLineCount) {
+      motorDriver->pwmOutput(0, 0);
+      vacuumDriver->pwmOutput(0);
+      vTaskDelay(1000 / portTICK_PERIOD_MS);
+      continue;
+    }
 
+    uint16_t averageLeftSensorValue  = 0;
+    uint16_t averageRightSensorValue = 0;
+    averageLeftSensorValue  = (sideSensorValues[0] + sideSensorValues[1]) / 2;
+    averageRightSensorValue = (sideSensorValues[2] + sideSensorValues[3]) / 2;
+    if(averageLeftSensorValue > 200 || averageRightSensorValue > 200) {}
+
+
+    // printf("\033[2J\033[H");
+    // irSensorDriver->readCalibrated(lineSensorValues, sideSensorValues);
     // printf("L: ");
     // for(int i = 0; i < 12; i++) {
     //   printf("%4d ", lineSensorValues[i]);
@@ -95,29 +112,18 @@ void mainTaskLoop(void *params) {
     // }
     // printf("\n");
     // printf("Path PID: %f\n", pathPID);
+    // printf("Encoder Left: %ld\n", encoderLeftDriver->getCount());
+    // printf("Encoder Right: %ld\n", encoderRightDriver->getCount());
+
+    irSensorDriver->readCalibrated(lineSensorValues, sideSensorValues);
+
+    float pathPID = pathController->getPID();
+
 
     motorDriver->pwmOutput(RobotEnv::BASE_MOTOR_PWM + pathPID,
                            RobotEnv::BASE_MOTOR_PWM - pathPID);
 
-    // motorDriver->pwmOutput(RobotEnv::BASE_MOTOR_PWM - pathPID,
-    //                        RobotEnv::BASE_MOTOR_PWM + pathPID); // teste
-    //                        semreh
-
-    // motorDriver->pwmOutput(0, 0);
     // vacuumDriver->pwmOutput(RobotEnv::BASE_VACUUM_PWM);
-    // printf("Encoder Left: %ld\n", encoderLeftDriver->getCount());
-    // printf("Encoder Right: %ld\n", encoderRightDriver->getCount());
-
-    // TODO: Use motorDriver to apply PID output to motors
-    // motorDriver->setSpeed(pathPID);
-
-    // Suppress unused variable warnings - these will be used for motor
-    // control
-    (void)motorDriver;
-    (void)encoderLeftDriver;
-    (void)encoderRightDriver;
-    (void)vacuumDriver;
-    // (void)pathPID;
 
     vTaskDelay(1 / portTICK_PERIOD_MS);
   }

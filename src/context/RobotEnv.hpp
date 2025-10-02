@@ -2,7 +2,6 @@
 #define ROBOT_ENV_HPP
 
 namespace RobotEnv {
-
 const float ROBOT_WIDTH         = 4;
 const float WHEEL_RADIUS        = 4;
 const float WHEEL_CIRCUMFERENCE = 4;

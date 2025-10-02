@@ -1,5 +1,9 @@
 {
   "files.associations": {
+    "*.postcss": "tailwindcss",
+    "*.svelte": "svelte",
+    "*.html": "html",
+    ".clang-tidy": "yaml",
     "array": "cpp",
     "string_view": "cpp",
     "initializer_list": "cpp",
@@ -57,7 +61,17 @@
     "format": "cpp",
     "numbers": "cpp",
     "text_encoding": "cpp",
-    "variant": "cpp"
+    "variant": "cpp",
+    "ble_svc_gap.h": "c",
+    "freertos.h": "c",
+    "bitset": "cpp",
+    "chrono": "cpp",
+    "condition_variable": "cpp",
+    "ratio": "cpp",
+    "mutex": "cpp",
+    "semaphore": "cpp",
+    "stop_token": "cpp",
+    "thread": "cpp"
   },
   "editor.tabSize": 2,
   "editor.formatOnPaste": true,

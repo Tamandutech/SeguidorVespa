@@ -2,27 +2,30 @@
 
 #include "esp_log.h"
 #include "esp_nimble_hci.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/ringbuf.h"
 #include "host/ble_hs.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "nvs_flash.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
-#include <freertos/FreeRTOS.h>
+
 
 static const char *_TAG = "NORDIC UART";
 
 #define CONFIG_NORDIC_UART_MAX_LINE_LENGTH 256
-#define CONFIG_NORDIC_UART_RX_BUFFER_SIZE 4096
+#define CONFIG_NORDIC_UART_RX_BUFFER_SIZE  4096
+
 #define BLE_SEND_MTU 128
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
-#define B0(x) ((x) & 0xFF)
-#define B1(x) (((x) >> 8) & 0xFF)
-#define B2(x) (((x) >> 16) & 0xFF)
-#define B3(x) (((x) >> 24) & 0xFF)
-#define B4(x) (((x) >> 32) & 0xFF)
-#define B5(x) (((x) >> 40) & 0xFF)
+#define B0(x)     ((x) & 0xFF)
+#define B1(x)     (((x) >> 8) & 0xFF)
+#define B2(x)     (((x) >> 16) & 0xFF)
+#define B3(x)     (((x) >> 24) & 0xFF)
+#define B4(x)     (((x) >> 32) & 0xFF)
+#define B5(x)     (((x) >> 40) & 0xFF)
 
 // clang-format off
 #define UUID128_CONST(a32, b16, c16, d16, e48) \
@@ -32,6 +35,113 @@ static const char *_TAG = "NORDIC UART";
     B1(b16), B0(a32), B1(a32), B2(a32), B3(a32), \
   )
 // clang-format off
+
+// Split the message in BLE_SEND_MTU and send it.
+esp_err_t nordic_uart_send(const char *message) { //
+  return _nordic_uart_send(message);
+}
+
+esp_err_t nordic_uart_sendln(const char *message) {
+  if (nordic_uart_send(message) != ESP_OK)
+    return ESP_FAIL;
+  if (nordic_uart_send("\r\n") != ESP_OK)
+    return ESP_FAIL;
+  return ESP_OK;
+}
+
+esp_err_t nordic_uart_start(const char *device_name, void (*callback)(enum nordic_uart_callback_type callback_type)) {
+  return _nordic_uart_start(device_name, callback);
+}
+
+esp_err_t nordic_uart_stop(void) { //
+  return _nordic_uart_stop();
+}
+
+// the ringbuffer is an interface with external
+RingbufHandle_t nordic_uart_rx_buf_handle;
+
+static char *_nordic_uart_rx_line_buf = NULL;
+static size_t _nordic_uart_rx_line_buf_pos = 0;
+
+esp_err_t _nordic_uart_send_line_buf_to_ring_buf() {
+  _nordic_uart_rx_line_buf[_nordic_uart_rx_line_buf_pos] = '\0';
+  UBaseType_t res = xRingbufferSend(nordic_uart_rx_buf_handle, _nordic_uart_rx_line_buf,
+                                    _nordic_uart_rx_line_buf_pos + 1, pdMS_TO_TICKS(100));
+  _nordic_uart_rx_line_buf_pos = 0;
+
+  return res == pdTRUE ? ESP_OK : ESP_FAIL;
+}
+
+esp_err_t _nordic_uart_linebuf_append(char c) {
+  switch (c) {
+  // break \003 == Ctrl-c
+  case '\003':
+    _nordic_uart_rx_line_buf[0] = '\003';
+    _nordic_uart_rx_line_buf_pos = 1;
+    if (_nordic_uart_send_line_buf_to_ring_buf() != ESP_OK) {
+      ESP_LOGE(_TAG, "Failed to send item");
+      return ESP_FAIL;
+    }
+    break;
+
+  // skip \r
+  case '\r':
+    break;
+
+  // send a line buffer to ring buffer
+  case '\n':
+  case '\0':
+    if (_nordic_uart_send_line_buf_to_ring_buf() != ESP_OK) {
+      ESP_LOGE(_TAG, "Failed to send item");
+      return ESP_FAIL;
+    }
+    break;
+
+  // push char to local line buffer
+  default:
+    if (_nordic_uart_rx_line_buf_pos < CONFIG_NORDIC_UART_MAX_LINE_LENGTH) {
+      _nordic_uart_rx_line_buf[_nordic_uart_rx_line_buf_pos++] = c;
+    } else {
+      ESP_LOGE(_TAG, "line buffer overflow");
+      return ESP_FAIL;
+    }
+    break;
+  }
+  return ESP_OK;
+}
+
+esp_err_t _nordic_uart_buf_deinit() {
+  if (!_nordic_uart_linebuf_initialized())
+    return ESP_FAIL;
+
+  free(_nordic_uart_rx_line_buf);
+  _nordic_uart_rx_line_buf = NULL;
+  _nordic_uart_rx_line_buf_pos = 0;
+
+  vRingbufferDelete(nordic_uart_rx_buf_handle);
+  nordic_uart_rx_buf_handle = NULL;
+
+  return ESP_OK;
+}
+
+esp_err_t _nordic_uart_buf_init() {
+  _nordic_uart_buf_deinit();
+
+  // Buffer for receive BLE and split it with /\r*\n/
+  _nordic_uart_rx_line_buf = (char *)malloc(CONFIG_NORDIC_UART_MAX_LINE_LENGTH + 1);
+  _nordic_uart_rx_line_buf_pos = 0;
+  nordic_uart_rx_buf_handle = xRingbufferCreate(CONFIG_NORDIC_UART_RX_BUFFER_SIZE, RINGBUF_TYPE_NOSPLIT);
+  if (nordic_uart_rx_buf_handle == NULL) {
+    ESP_LOGE(_TAG, "Failed to create ring buffer");
+    return ESP_FAIL;
+  }
+  return ESP_OK;
+}
+
+bool _nordic_uart_linebuf_initialized() { //
+  return _nordic_uart_rx_line_buf != NULL;
+}
+
 
 static const ble_uuid128_t SERVICE_UUID = UUID128_CONST(0x6E400001, 0xB5A3, 0xF393, 0xE0A9, 0xE50E24DCCA9E);
 static const ble_uuid128_t CHAR_UUID_RX = UUID128_CONST(0x6E400002, 0xB5A3, 0xF393, 0xE0A9, 0xE50E24DCCA9E);
@@ -73,12 +183,14 @@ static const struct ble_gatt_svc_def gat_svcs[] = {
      .characteristics =
          (struct ble_gatt_chr_def[]){
              {.uuid = (ble_uuid_t *)&CHAR_UUID_RX,
+              .access_cb = _uart_receive,
               .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
-              .access_cb = _uart_receive},
+            },
              {.uuid = (ble_uuid_t *)&CHAR_UUID_TX,
+              .access_cb = _uart_noop,
               .flags = BLE_GATT_CHR_F_NOTIFY,
               .val_handle = &notify_char_attr_hdl,
-              .access_cb = _uart_noop},
+            },
              {0},
          }},
     {0}};
@@ -273,3 +385,4 @@ esp_err_t _nordic_uart_stop(void) {
   
   return ESP_OK;
 }
+

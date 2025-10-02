@@ -14,8 +14,6 @@
 #include "tasks/CommunicationTask/CommunicationTask.hpp"
 #include "tasks/MainTask/MainTask.hpp"
 
-GlobalData globalData;
-
 extern "C" {
 void app_main(void);
 }
@@ -23,15 +21,15 @@ void app_main(void);
 void app_main() {
   esp_log_level_set("QTRSensors", ESP_LOG_INFO);
 
-  globalData.randomNumber.store(10, std::memory_order_relaxed);
-  globalData.randomChar.store('b', std::memory_order_relaxed);
-  globalData.randomFloat.store(20.0F, std::memory_order_relaxed);
-  globalData.randomBool.store(true, std::memory_order_relaxed);
+  // globalData.randomNumber.store(10, std::memory_order_relaxed);
+  // globalData.randomChar.store('b', std::memory_order_relaxed);
+  // globalData.randomFloat.store(20.0F, std::memory_order_relaxed);
+  // globalData.randomBool.store(true, std::memory_order_relaxed);
 
-  Storage::write(globalData.randomNumber.load(std::memory_order_relaxed));
-  Storage::write(globalData.randomChar.load(std::memory_order_relaxed));
-  Storage::write(globalData.randomFloat.load(std::memory_order_relaxed));
-  Storage::write(globalData.randomBool.load(std::memory_order_relaxed));
+  // Storage::write(globalData.randomNumber.load(std::memory_order_relaxed));
+  // Storage::write(globalData.randomChar.load(std::memory_order_relaxed));
+  // Storage::write(globalData.randomFloat.load(std::memory_order_relaxed));
+  // Storage::write(globalData.randomBool.load(std::memory_order_relaxed));
 
   MainTaskParamSchema          mainTaskParam          = {globalData};
   CommunicationTaskParamSchema communicationTaskParam = {globalData};
