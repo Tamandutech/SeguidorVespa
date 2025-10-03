@@ -93,11 +93,11 @@ void mainTaskLoop(void *params) {
       continue;
     }
 
-    uint16_t averageLeftSensorValue  = 0;
-    uint16_t averageRightSensorValue = 0;
-    averageLeftSensorValue  = (sideSensorValues[0] + sideSensorValues[1]) / 2;
-    averageRightSensorValue = (sideSensorValues[2] + sideSensorValues[3]) / 2;
-    if(averageLeftSensorValue > 200 || averageRightSensorValue > 200) {}
+    // uint16_t averageLeftSensorValue  = 0;
+    // uint16_t averageRightSensorValue = 0;
+    // averageLeftSensorValue  = (sideSensorValues[0] + sideSensorValues[1]) /
+    // 2; averageRightSensorValue = (sideSensorValues[2] + sideSensorValues[3])
+    // / 2; if(averageLeftSensorValue > 200 || averageRightSensorValue > 200) {}
 
 
     // printf("\033[2J\033[H");
@@ -123,7 +123,7 @@ void mainTaskLoop(void *params) {
     motorDriver->pwmOutput(RobotEnv::BASE_MOTOR_PWM + pathPID,
                            RobotEnv::BASE_MOTOR_PWM - pathPID);
 
-    // vacuumDriver->pwmOutput(RobotEnv::BASE_VACUUM_PWM);
+    vacuumDriver->pwmOutput(RobotEnv::BASE_VACUUM_PWM);
 
     vTaskDelay(1 / portTICK_PERIOD_MS);
   }
