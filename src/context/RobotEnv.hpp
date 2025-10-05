@@ -2,16 +2,20 @@
 #define ROBOT_ENV_HPP
 
 namespace RobotEnv {
-const float ROBOT_WIDTH         = 4;
-const float WHEEL_RADIUS        = 4;
-const float WHEEL_CIRCUMFERENCE = 4;
+const int32_t ROBOT_WIDTH         = 4;
+const int32_t WHEEL_RADIUS        = 11;
+const int32_t WHEEL_CIRCUMFERENCE = 70;
 
-const float MAX_SPEED          = 4;
-const float MAX_DECELERATION   = 4;
-const float MAX_ROTATION_SPEED = 4;
+const int32_t MAX_SPEED          = 4;
+const int32_t MAX_DECELERATION   = 4;
+const int32_t MAX_ROTATION_SPEED = 4;
 
-const int32_t BASE_MOTOR_PWM  = 10;
-const int32_t BASE_VACUUM_PWM = 10;
+// const int32_t BASE_MOTOR_PWM  = 10;
+const int32_t BASE_VACUUM_PWM = 85;
+
+const int32_t MAX_MOTOR_PWM = 66;
+
+const int32_t SIDE_SENSOR_READ_AVERAGE_COUNT = 5;
 
 constexpr float EPSILON_TOLERANCE =
     1e-6F; // Tolerância para comparações de ponto flutuante

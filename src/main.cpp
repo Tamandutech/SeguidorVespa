@@ -21,10 +21,12 @@ void app_main(void);
 void app_main() {
   esp_log_level_set("QTRSensors", ESP_LOG_INFO);
 
-  // globalData.randomNumber.store(10, std::memory_order_relaxed);
-  // globalData.randomChar.store('b', std::memory_order_relaxed);
-  // globalData.randomFloat.store(20.0F, std::memory_order_relaxed);
-  // globalData.randomBool.store(true, std::memory_order_relaxed);
+  // Initialize the communication queue
+  globalData.communicationQueue = xQueueCreate(10, sizeof(Message));
+  if(globalData.communicationQueue == NULL) {
+    ESP_LOGE("Main", "Failed to create communication queue");
+    return;
+  }
 
   // Storage::write(globalData.randomNumber.load(std::memory_order_relaxed));
   // Storage::write(globalData.randomChar.load(std::memory_order_relaxed));
