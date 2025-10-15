@@ -57,7 +57,7 @@ void mainTaskLoop(void *params) {
   VacuumDriver *vacuumDriver = new VacuumDriver(vacuumPins);
 
   PathControllerParamSchema pathControllerParam = {
-      .constants      = {.kP = 0.0175F, .kI = 0.00F, .kD = 0.14F},
+      .constants      = {.kP = 0.0135F, .kI = 0.00F, .kD = 0.07F},
       .sensorQuantity = 12,
       .sensorValues   = lineSensorValues,
       .maxAngle       = 45.0F, // Ângulo máximo de 45 graus
@@ -86,32 +86,35 @@ void mainTaskLoop(void *params) {
   vTaskDelay(5000 / portTICK_PERIOD_MS);
 
   for(;;) {
-    if(!param->globalData.isReadyToRun.load(std::memory_order_relaxed)) {
+    int32_t encoderMilimetersAverage =
+        ((encoderLeftDriver->getCount() + encoderRightDriver->getCount()) / 2) *
+        RobotEnv::WHEEL_CIRCUMFERENCE / 4095;
+
+    // Condição de parada controlada
+    if(!param->globalData.isReadyToRun.load(std::memory_order_relaxed) ||
+       encoderMilimetersAverage > finishLineCount) {
       lastIsReadyToRun = false;
       motorDriver->pwmOutput(0, 0);
       vacuumDriver->pwmOutput(0);
+      sendStatusUpdate(param->globalData, "Stopped at ",
+                       encoderMilimetersAverage);
       vTaskDelay(1000 / portTICK_PERIOD_MS);
       continue;
-    } else {
+    } else { // Condição de início controlada
       if(param->globalData.isReadyToRun.load(std::memory_order_relaxed) !=
          lastIsReadyToRun) {
         lastIsReadyToRun = true;
+
+        encoderLeftDriver->clearCount();
+        encoderRightDriver->clearCount();
+
+        finishLineCount =
+            param->globalData.finishLineCount.load(std::memory_order_relaxed);
 
         vTaskDelay(4000 / portTICK_PERIOD_MS);
         vacuumDriver->pwmOutput(RobotEnv::BASE_VACUUM_PWM);
         vTaskDelay(1000);
       }
-    }
-
-    int32_t encoderMilimetersAverage =
-        ((encoderLeftDriver->getCount() + encoderRightDriver->getCount()) / 2) *
-        RobotEnv::WHEEL_CIRCUMFERENCE / 4095;
-
-    if(encoderMilimetersAverage > finishLineCount) {
-      motorDriver->pwmOutput(0, 0);
-      vacuumDriver->pwmOutput(0);
-      vTaskDelay(1000 / portTICK_PERIOD_MS);
-      continue;
     }
 
     irSensorDriver->readCalibrated(lineSensorValues, sideSensorValues);
@@ -136,7 +139,7 @@ void mainTaskLoop(void *params) {
         lastRightReadIsOnMark = false;
       } else if(!leftIsOnMark && rightIsOnMark) {
         if(!lastRightReadIsOnMark) {
-          sendSensorData(param->globalData, encoderMilimetersAverage);
+          sendStatusUpdate(param->globalData, "R ", encoderMilimetersAverage);
 
           lastLeftReadIsOnMark  = false;
           lastRightReadIsOnMark = true;
@@ -146,7 +149,7 @@ void mainTaskLoop(void *params) {
           param->globalData.markCount.store(
               param->globalData.markCount.load(std::memory_order_relaxed) + 1,
               std::memory_order_relaxed);
-          sendSensorData(param->globalData, encoderMilimetersAverage);
+          sendStatusUpdate(param->globalData, "L ", encoderMilimetersAverage);
 
           lastLeftReadIsOnMark  = true;
           lastRightReadIsOnMark = false;
