@@ -94,9 +94,13 @@ void MotorDriver::pwmOutput(int32_t valueA, int32_t valueB) {
 
   if(valueA > RobotEnv::MAX_MOTOR_PWM) {
     valueA = RobotEnv::MAX_MOTOR_PWM;
+  } else if(valueA < -RobotEnv::MAX_MOTOR_PWM) {
+    valueA = -RobotEnv::MAX_MOTOR_PWM;
   }
   if(valueB > RobotEnv::MAX_MOTOR_PWM) {
     valueB = RobotEnv::MAX_MOTOR_PWM;
+  } else if(valueB < -RobotEnv::MAX_MOTOR_PWM) {
+    valueB = -RobotEnv::MAX_MOTOR_PWM;
   }
 
   // Map from (-100, 100) to (-maxValue, maxValue)
