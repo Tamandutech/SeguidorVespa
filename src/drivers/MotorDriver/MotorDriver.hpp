@@ -11,6 +11,7 @@
 #include "esp_log.h"
 
 #include "context/GlobalData.hpp"
+#include "context/RobotEnv.hpp"
 
 #define MOTOR_LEDC_TIMER     LEDC_TIMER_1        // Timer do LEDC utilizado
 #define MOTOR_LEDC_MODE      LEDC_LOW_SPEED_MODE // Modo de velocidade do LEDC
@@ -90,6 +91,17 @@ void MotorDriver::pwmOutput(int32_t valueA, int32_t valueB) {
   // Clamp input values to (-100, 100) range
   valueA = (valueA > 100) ? 100 : (valueA < -100) ? -100 : valueA;
   valueB = (valueB > 100) ? 100 : (valueB < -100) ? -100 : valueB;
+
+  if(valueA > RobotEnv::MAX_MOTOR_PWM) {
+    valueA = RobotEnv::MAX_MOTOR_PWM;
+  } else if(valueA < -RobotEnv::MAX_MOTOR_PWM) {
+    valueA = -RobotEnv::MAX_MOTOR_PWM;
+  }
+  if(valueB > RobotEnv::MAX_MOTOR_PWM) {
+    valueB = RobotEnv::MAX_MOTOR_PWM;
+  } else if(valueB < -RobotEnv::MAX_MOTOR_PWM) {
+    valueB = -RobotEnv::MAX_MOTOR_PWM;
+  }
 
   // Map from (-100, 100) to (-maxValue, maxValue)
   int32_t mappedValueA = (valueA * maxValue) / 100;

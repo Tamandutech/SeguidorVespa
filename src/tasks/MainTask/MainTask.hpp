@@ -20,7 +20,7 @@ void mainTaskLoop(void *params) {
   int32_t finishLineCount =
       param->globalData.finishLineCount.load(std::memory_order_relaxed);
 
-  // uint16_t sensorValuesRaw[16];
+  uint16_t rawSensorValues[16];
   uint16_t sideSensorValues[4];
   uint16_t lineSensorValues[12];
 
@@ -57,7 +57,7 @@ void mainTaskLoop(void *params) {
   VacuumDriver *vacuumDriver = new VacuumDriver(vacuumPins);
 
   PathControllerParamSchema pathControllerParam = {
-      .constants      = {.kP = 0.01F, .kI = 0.00F, .kD = 0.19F},
+      .constants      = {.kP = 0.0135F, .kI = 0.00F, .kD = 0.07F},
       .sensorQuantity = 12,
       .sensorValues   = lineSensorValues,
       .maxAngle       = 45.0F, // Ângulo máximo de 45 graus
@@ -65,6 +65,16 @@ void mainTaskLoop(void *params) {
       .sensorToCenter = 50, // Distância do sensor ao centro em mm
   };
   PathController *pathController = new PathController(pathControllerParam);
+
+  bool lastIsReadyToRun = false;
+
+  bool lastLeftReadIsOnMark  = false;
+  bool lastRightReadIsOnMark = false;
+
+  int32_t  sideSensorReadCount  = 0;
+  uint32_t sideSensorAverage[4] = {0, 0, 0, 0};
+
+  uint32_t mapPointIndex = 0;
 
   ESP_LOGI("MainTask", "Calibrando os sensores...");
   for(int i = 0; i < 50; i++) {
@@ -76,32 +86,103 @@ void mainTaskLoop(void *params) {
   vTaskDelay(5000 / portTICK_PERIOD_MS);
 
   for(;;) {
-    if(!param->globalData.isReadyToRun.load(std::memory_order_relaxed)) {
+    int32_t encoderMilimetersAverage =
+        ((encoderLeftDriver->getCount() + encoderRightDriver->getCount()) / 2) *
+        RobotEnv::WHEEL_CIRCUMFERENCE / 4095;
+
+    // Condição de parada controlada
+    if(!param->globalData.isReadyToRun.load(std::memory_order_relaxed) ||
+       encoderMilimetersAverage > finishLineCount) {
+      lastIsReadyToRun = false;
       motorDriver->pwmOutput(0, 0);
       vacuumDriver->pwmOutput(0);
-      vTaskDelay(100 / portTICK_PERIOD_MS);
-      continue;
-    }
-
-    int32_t encoderAverage =
-        (encoderLeftDriver->getCount() + encoderRightDriver->getCount()) / 2;
-
-    if(encoderAverage > finishLineCount) {
-      motorDriver->pwmOutput(0, 0);
-      vacuumDriver->pwmOutput(0);
+      sendStatusUpdate(param->globalData, "Stopped at ",
+                       encoderMilimetersAverage);
       vTaskDelay(1000 / portTICK_PERIOD_MS);
       continue;
+    } else { // Condição de início controlada
+      if(param->globalData.isReadyToRun.load(std::memory_order_relaxed) !=
+         lastIsReadyToRun) {
+        lastIsReadyToRun = true;
+
+        encoderLeftDriver->clearCount();
+        encoderRightDriver->clearCount();
+
+        finishLineCount =
+            param->globalData.finishLineCount.load(std::memory_order_relaxed);
+
+        vTaskDelay(4000 / portTICK_PERIOD_MS);
+        vacuumDriver->pwmOutput(RobotEnv::BASE_VACUUM_PWM);
+        vTaskDelay(1000);
+      }
     }
 
-    // uint16_t averageLeftSensorValue  = 0;
-    // uint16_t averageRightSensorValue = 0;
-    // averageLeftSensorValue  = (sideSensorValues[0] + sideSensorValues[1]) /
-    // 2; averageRightSensorValue = (sideSensorValues[2] + sideSensorValues[3])
-    // / 2; if(averageLeftSensorValue > 200 || averageRightSensorValue > 200) {}
+    irSensorDriver->readCalibrated(lineSensorValues, sideSensorValues);
 
+    sideSensorReadCount++;
+    for(int i = 0; i < 4; i++) {
+      sideSensorAverage[i] += sideSensorValues[i];
+    }
+
+    if(sideSensorReadCount >= RobotEnv::SIDE_SENSOR_READ_AVERAGE_COUNT) {
+      for(int i = 0; i < 4; i++) {
+        sideSensorAverage[i] /= RobotEnv::SIDE_SENSOR_READ_AVERAGE_COUNT;
+      }
+      sideSensorReadCount = 0;
+
+      bool leftIsOnMark =
+          sideSensorAverage[0] < 200 || sideSensorAverage[1] < 200;
+      bool rightIsOnMark =
+          sideSensorAverage[2] < 200 || sideSensorAverage[3] < 200;
+      if(!leftIsOnMark && !rightIsOnMark) {
+        lastLeftReadIsOnMark  = false;
+        lastRightReadIsOnMark = false;
+      } else if(!leftIsOnMark && rightIsOnMark) {
+        if(!lastRightReadIsOnMark) {
+          sendStatusUpdate(param->globalData, "R ", encoderMilimetersAverage);
+
+          lastLeftReadIsOnMark  = false;
+          lastRightReadIsOnMark = true;
+        }
+      } else if(leftIsOnMark && !rightIsOnMark) {
+        if(!lastLeftReadIsOnMark) {
+          param->globalData.markCount.store(
+              param->globalData.markCount.load(std::memory_order_relaxed) + 1,
+              std::memory_order_relaxed);
+          sendStatusUpdate(param->globalData, "L ", encoderMilimetersAverage);
+
+          lastLeftReadIsOnMark  = true;
+          lastRightReadIsOnMark = false;
+        }
+      } else {
+        lastLeftReadIsOnMark  = true;
+        lastRightReadIsOnMark = true;
+      }
+
+      for(int i = 0; i < 4; i++) {
+        sideSensorAverage[i] = 0;
+      }
+    }
+
+    if(param->globalData.mapData[mapPointIndex].encoderMilimeters >
+           encoderMilimetersAverage &&
+       (mapPointIndex + 1) < param->globalData.mapData.size()) {
+      mapPointIndex++;
+    }
+
+    float pathPID = pathController->getPID();
+
+    motorDriver->pwmOutput(
+        param->globalData.mapData[mapPointIndex].baseMotorPWM + pathPID,
+        param->globalData.mapData[mapPointIndex].baseMotorPWM - pathPID);
+
+    vacuumDriver->pwmOutput(RobotEnv::BASE_VACUUM_PWM);
 
     // printf("\033[2J\033[H");
-    // irSensorDriver->readCalibrated(lineSensorValues, sideSensorValues);
+    // irSensorDriver->read(rawSensorValues);
+    // for(int i = 0; i < 16; i++) {
+    //   printf("%4d ", rawSensorValues[i]);
+    // }
     // printf("L: ");
     // for(int i = 0; i < 12; i++) {
     //   printf("%4d ", lineSensorValues[i]);
@@ -111,19 +192,13 @@ void mainTaskLoop(void *params) {
     //   printf("%4d ", sideSensorValues[i]);
     // }
     // printf("\n");
+    // printf("Base Motor PWM: %ld\n",
+    //        param->globalData.mapData[mapPointIndex].baseMotorPWM);
     // printf("Path PID: %f\n", pathPID);
+    // printf("Mark Count: %ld\n",
+    //        param->globalData.markCount.load(std::memory_order_relaxed));
     // printf("Encoder Left: %ld\n", encoderLeftDriver->getCount());
     // printf("Encoder Right: %ld\n", encoderRightDriver->getCount());
-
-    irSensorDriver->readCalibrated(lineSensorValues, sideSensorValues);
-
-    float pathPID = pathController->getPID();
-
-
-    motorDriver->pwmOutput(RobotEnv::BASE_MOTOR_PWM + pathPID,
-                           RobotEnv::BASE_MOTOR_PWM - pathPID);
-
-    vacuumDriver->pwmOutput(RobotEnv::BASE_VACUUM_PWM);
 
     vTaskDelay(1 / portTICK_PERIOD_MS);
   }
