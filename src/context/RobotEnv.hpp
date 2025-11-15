@@ -11,7 +11,7 @@ const int32_t MAX_DECELERATION   = 4;
 const int32_t MAX_ROTATION_SPEED = 4;
 
 // const int32_t BASE_MOTOR_PWM  = 10;
-const int32_t BASE_VACUUM_PWM = 100;
+const int32_t BASE_VACUUM_PWM = 30;
 
 const int32_t MAX_MOTOR_PWM = 66;
 
@@ -25,6 +25,8 @@ constexpr float INTEGRAL_MAX = 1000.0F;  // Valor máximo para o termo integral
 constexpr float INTEGRAL_MIN = -1000.0F; // Valor mínimo para o termo integral
 
 const uint8_t GPIO_LED_DEBUG = 47;
+
+const uint8_t GPIO_BATTERY_VOLTAGE = 18;
 
 const uint8_t GPIO_DIRECTION_A = 9;
 const uint8_t GPIO_DIRECTION_B = 37;

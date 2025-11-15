@@ -96,8 +96,8 @@ void mainTaskLoop(void *params) {
       lastIsReadyToRun = false;
       motorDriver->pwmOutput(0, 0);
       vacuumDriver->pwmOutput(0);
-      sendStatusUpdate(param->globalData, "Stopped at ",
-                       encoderMilimetersAverage);
+      // pushMessageToQueue(param->globalData, "Stopped at %ld",
+      //                    encoderMilimetersAverage);
       vTaskDelay(1000 / portTICK_PERIOD_MS);
       continue;
     } else { // Condição de início controlada
@@ -139,7 +139,8 @@ void mainTaskLoop(void *params) {
         lastRightReadIsOnMark = false;
       } else if(!leftIsOnMark && rightIsOnMark) {
         if(!lastRightReadIsOnMark) {
-          sendStatusUpdate(param->globalData, "R ", encoderMilimetersAverage);
+          pushMessageToQueue(param->globalData, "R %ld",
+                             encoderMilimetersAverage);
 
           lastLeftReadIsOnMark  = false;
           lastRightReadIsOnMark = true;
@@ -149,7 +150,8 @@ void mainTaskLoop(void *params) {
           param->globalData.markCount.store(
               param->globalData.markCount.load(std::memory_order_relaxed) + 1,
               std::memory_order_relaxed);
-          sendStatusUpdate(param->globalData, "L ", encoderMilimetersAverage);
+          pushMessageToQueue(param->globalData, "L %ld",
+                             encoderMilimetersAverage);
 
           lastLeftReadIsOnMark  = true;
           lastRightReadIsOnMark = false;
