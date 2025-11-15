@@ -146,11 +146,15 @@ bool _nordic_uart_linebuf_initialized() { //
 static const ble_uuid128_t SERVICE_UUID = UUID128_CONST(0x6E400001, 0xB5A3, 0xF393, 0xE0A9, 0xE50E24DCCA9E);
 static const ble_uuid128_t CHAR_UUID_RX = UUID128_CONST(0x6E400002, 0xB5A3, 0xF393, 0xE0A9, 0xE50E24DCCA9E);
 static const ble_uuid128_t CHAR_UUID_TX = UUID128_CONST(0x6E400003, 0xB5A3, 0xF393, 0xE0A9, 0xE50E24DCCA9E);
+static const ble_uuid128_t SERVICE_UUID_STREAM = UUID128_CONST(0x3A8328FB, 0x3768, 0x46D2, 0xB371, 0xB34864CE8025);
+static const ble_uuid128_t CHAR_UUID_STREAM    = UUID128_CONST(0x3A8328FC, 0x3768, 0x46D2, 0xB371, 0xB34864CE8025);
+
 
 static uint8_t ble_addr_type;
 
 static uint16_t ble_conn_hdl;
 static uint16_t notify_char_attr_hdl;
+static uint16_t stream_char_attr_hdl;
 
 static void (*_nordic_uart_callback)(enum nordic_uart_callback_type callback_type) = NULL;
 static uart_receive_callback_t _uart_receive_callback = NULL;
@@ -190,6 +194,17 @@ static const struct ble_gatt_svc_def gat_svcs[] = {
               .access_cb = _uart_noop,
               .flags = BLE_GATT_CHR_F_NOTIFY,
               .val_handle = &notify_char_attr_hdl,
+            },
+             {0},
+         }},
+    {.type = BLE_GATT_SVC_TYPE_PRIMARY,
+     .uuid = &SERVICE_UUID_STREAM.u,
+     .characteristics =
+         (struct ble_gatt_chr_def[]){
+             {.uuid = (ble_uuid_t *)&CHAR_UUID_STREAM,
+              .access_cb = _uart_noop,
+              .flags = BLE_GATT_CHR_F_NOTIFY,
+              .val_handle = &stream_char_attr_hdl,
             },
              {0},
          }},
@@ -298,8 +313,8 @@ static void ble_host_task(void *param) {
 
 // Split the message in BLE_SEND_MTU and send it.
 esp_err_t _nordic_uart_send(const char *message) {
-  const int len = strlen(message);
-  if (len == 0)
+  const int len = strlen(message) + 1; // Include null terminator
+  if (len == 1) // Only null terminator
     return ESP_OK;
   // Split the message in BLE_SEND_MTU and send it.
   for (int i = 0; i < len; i += BLE_SEND_MTU) {
