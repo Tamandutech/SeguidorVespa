@@ -32,12 +32,12 @@ struct MapPoint {
 struct GlobalData {
   std::atomic<bool> isReadyToRun = false;
 
-  std::atomic<int32_t> finishLineCount = 30500;
+  std::atomic<int32_t> finishLineCount = 14900;
 
   std::vector<MapPoint> mapData = {
-      {.encoderMilimeters = 0,     .baseMotorPWM = 36},
-      {.encoderMilimeters = 28000, .baseMotorPWM = 40},
-      {.encoderMilimeters = 28800, .baseMotorPWM = 35},
+      {.encoderMilimeters = 0, .baseMotorPWM = 10},
+      // {.encoderMilimeters = 28000, .baseMotorPWM = 40},
+      // {.encoderMilimeters = 28800, .baseMotorPWM = 35},
   };
 
   std::atomic<int32_t> markCount = 0;
