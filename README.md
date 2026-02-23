@@ -1,4 +1,4 @@
-# esp32.pio.template
+# Seguidor Vespa
 
 Template with developer experience setup. PlatformIO + Cpp + CI/CD + Linter + Formatter.
 
