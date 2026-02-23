@@ -20,7 +20,7 @@ void mainTaskLoop(void *params) {
   int32_t finishLineCount =
       param->globalData.finishLineCount.load(std::memory_order_relaxed);
 
-  uint16_t rawSensorValues[16];
+  // uint16_t rawSensorValues[16];
   uint16_t sideSensorValues[4];
   uint16_t lineSensorValues[12];
 
@@ -57,7 +57,7 @@ void mainTaskLoop(void *params) {
   VacuumDriver *vacuumDriver = new VacuumDriver(vacuumPins);
 
   PathControllerParamSchema pathControllerParam = {
-      .constants      = {.kP = 0.0135F, .kI = 0.00F, .kD = 0.07F},
+      .constants      = {.kP = 0.016F, .kI = 0.00F, .kD = 0.07F},
       .sensorQuantity = 12,
       .sensorValues   = lineSensorValues,
       .maxAngle       = 45.0F, // Ângulo máximo de 45 graus
@@ -96,8 +96,8 @@ void mainTaskLoop(void *params) {
       lastIsReadyToRun = false;
       motorDriver->pwmOutput(0, 0);
       vacuumDriver->pwmOutput(0);
-      sendStatusUpdate(param->globalData, "Stopped at ",
-                       encoderMilimetersAverage);
+      // pushMessageToQueue(param->globalData, "Stopped at %ld",
+      //                    encoderMilimetersAverage);
       vTaskDelay(1000 / portTICK_PERIOD_MS);
       continue;
     } else { // Condição de início controlada
@@ -139,8 +139,6 @@ void mainTaskLoop(void *params) {
         lastRightReadIsOnMark = false;
       } else if(!leftIsOnMark && rightIsOnMark) {
         if(!lastRightReadIsOnMark) {
-          sendStatusUpdate(param->globalData, "R ", encoderMilimetersAverage);
-
           lastLeftReadIsOnMark  = false;
           lastRightReadIsOnMark = true;
         }
@@ -149,7 +147,6 @@ void mainTaskLoop(void *params) {
           param->globalData.markCount.store(
               param->globalData.markCount.load(std::memory_order_relaxed) + 1,
               std::memory_order_relaxed);
-          sendStatusUpdate(param->globalData, "L ", encoderMilimetersAverage);
 
           lastLeftReadIsOnMark  = true;
           lastRightReadIsOnMark = false;

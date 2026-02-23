@@ -4,27 +4,23 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include <atomic>
+#include <cstring>
 #include <vector>
 
 // Message types for inter-task communication
-enum class MessageType { SENSOR_DATA, STATUS_UPDATE, COMMAND, EMERGENCY_STOP };
+enum class MessageType { LOG };
+
+#define MESSAGE_LOG_NAME_SIZE    32
+#define MESSAGE_LOG_MESSAGE_SIZE 256
 
 // Message structure for queue
 struct Message {
-  MessageType type;
-  union {
-    struct {
-      int32_t  sensorValue;
-      uint32_t timestamp;
-    } sensorData;
-    struct {
-      const char *status;
-      int32_t     value;
-    } statusUpdate;
-    struct {
-      const char *command;
-      int32_t     parameter;
-    } command;
+  struct {
+    MessageType type;
+  } header;
+  struct {
+    char name[MESSAGE_LOG_NAME_SIZE];
+    char message[MESSAGE_LOG_MESSAGE_SIZE];
   } data;
 };
 
@@ -36,12 +32,12 @@ struct MapPoint {
 struct GlobalData {
   std::atomic<bool> isReadyToRun = false;
 
-  std::atomic<int32_t> finishLineCount = 30500;
+  std::atomic<int32_t> finishLineCount = 14900;
 
   std::vector<MapPoint> mapData = {
-      {.encoderMilimeters = 0,     .baseMotorPWM = 36},
-      {.encoderMilimeters = 28000, .baseMotorPWM = 40},
-      {.encoderMilimeters = 28800, .baseMotorPWM = 35},
+      {.encoderMilimeters = 0, .baseMotorPWM = 10},
+      // {.encoderMilimeters = 28000, .baseMotorPWM = 40},
+      // {.encoderMilimeters = 28800, .baseMotorPWM = 35},
   };
 
   std::atomic<int32_t> markCount = 0;
