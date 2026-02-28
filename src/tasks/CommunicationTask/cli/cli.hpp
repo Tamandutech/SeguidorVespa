@@ -91,8 +91,9 @@ ParseError parseClassNameParameter(const char *input, ParsedReference &result) {
 }
 
 // Helper function to get parameter value as string
-bool getParameterValue(const char *className, const char *parameterName,
-                       char *valueBuffer, size_t bufferSize) {
+bool getParameterValue(const char *className,
+                       const char *parameterName, char *valueBuffer,
+                       size_t bufferSize) {
   // System parameters
   if(strcmp(className, "System") == 0) {
     if(strcmp(parameterName, "finishLineCount") == 0) {
@@ -109,9 +110,9 @@ bool getParameterValue(const char *className, const char *parameterName,
 
   // State parameters
   if(strcmp(className, "State") == 0) {
-    if(strcmp(parameterName, "isReadyToRun") == 0) {
-      snprintf(valueBuffer, bufferSize, "%d",
-               globalData.isReadyToRun.load(std::memory_order_relaxed) ? 1 : 0);
+    if(strcmp(parameterName, "robotMode") == 0) {
+      RobotMode mode = globalData.robotMode.load(std::memory_order_relaxed);
+      snprintf(valueBuffer, bufferSize, "%d", static_cast<int>(mode));
       return true;
     }
   }
@@ -121,8 +122,8 @@ bool getParameterValue(const char *className, const char *parameterName,
 }
 
 // Helper function to set parameter value
-bool setParameterValue(const char *className, const char *parameterName,
-                       const char *value) {
+bool setParameterValue(const char *className,
+                      const char *parameterName, const char *value) {
   // Handle negative values (prefixed with !)
   bool        isNegative  = (value[0] == '!');
   const char *actualValue = isNegative ? value + 1 : value;
@@ -145,9 +146,14 @@ bool setParameterValue(const char *className, const char *parameterName,
 
   // State parameters
   if(strcmp(className, "State") == 0) {
-    if(strcmp(parameterName, "isReadyToRun") == 0) {
-      int val = atoi(actualValue);
-      globalData.isReadyToRun.store(val != 0, std::memory_order_relaxed);
+    if(strcmp(parameterName, "robotMode") == 0) {
+      int       val  = atoi(actualValue);
+      RobotMode mode = RobotMode::IDLE;
+      if(val == 1)
+        mode = RobotMode::RUNNING;
+      else if(val == 2)
+        mode = RobotMode::CALIBRATION;
+      globalData.robotMode.store(mode, std::memory_order_relaxed);
       return true;
     }
   }
@@ -157,40 +163,34 @@ bool setParameterValue(const char *className, const char *parameterName,
 }
 
 // Command handler function pointer type
-// Takes argc and argv array, returns CLI status code
 typedef int (*CommandHandler)(int argc, char *argv[]);
 
 // ========== Command Handler Functions ==========
 
 // Parameter Commands
 static int handleParamList(int argc, char *argv[]) {
-  // List all available parameters
-  pushMessageToQueue(globalData, "Parameters:\n");
+  pushMessageToQueue("Parameters:\n");
   int index = 0;
 
-  // System parameters
   char value[64];
   if(getParameterValue("System", "finishLineCount", value, sizeof(value))) {
-    pushMessageToQueue(globalData, "  %d - System.finishLineCount: %s\n",
+    pushMessageToQueue("  %d - System.finishLineCount: %s\n",
                        index++, value);
   }
   if(getParameterValue("System", "markCount", value, sizeof(value))) {
-    pushMessageToQueue(globalData, "  %d - System.markCount: %s\n", index++,
+    pushMessageToQueue("  %d - System.markCount: %s\n", index++,
                        value);
   }
 
-  // State parameters
-  if(getParameterValue("State", "isReadyToRun", value, sizeof(value))) {
-    pushMessageToQueue(globalData, "  %d - State.isReadyToRun: %s\n", index++,
+  if(getParameterValue("State", "robotMode", value, sizeof(value))) {
+    pushMessageToQueue("  %d - State.robotMode: %s\n", index++,
                        value);
   }
 
-  // TODO: Add PID parameters and others as they become available
   return CLI_SUCCESS;
 }
 
 static int handleParamGet(int argc, char *argv[]) {
-  // Get parameter value: param_get <className>.<parameterName>
   if(argc < 2) {
     ESP_LOGW("CLI", "param_get requires a parameter reference\n");
     return CLI_ERROR_COMMAND_NOT_FOUND;
@@ -206,7 +206,7 @@ static int handleParamGet(int argc, char *argv[]) {
   char value[64];
   if(getParameterValue(ref.className, ref.parameterName, value,
                        sizeof(value))) {
-    pushMessageToQueue(globalData, "%s", value);
+    pushMessageToQueue("%s", value);
     return CLI_SUCCESS;
   } else {
     ESP_LOGW("CLI", "Parameter not found: %s.%s\n", ref.className,
@@ -216,7 +216,6 @@ static int handleParamGet(int argc, char *argv[]) {
 }
 
 static int handleParamSet(int argc, char *argv[]) {
-  // Set parameter value: param_set <className>.<parameterName> <value>
   if(argc < 3) {
     ESP_LOGW("CLI", "param_set requires parameter reference and value\n");
     return CLI_ERROR_COMMAND_NOT_FOUND;
@@ -240,37 +239,29 @@ static int handleParamSet(int argc, char *argv[]) {
 
 // Mapping Commands
 static int handleMapClear(int argc, char *argv[]) {
-  // Clear RAM mapping data
   globalData.mapData.clear();
   return CLI_SUCCESS;
 }
 
 static int handleMapClearFlash(int argc, char *argv[]) {
-  // Clear Flash mapping data (for now, same as RAM since we don't have
-  // separate Flash storage)
   globalData.mapData.clear();
   return CLI_SUCCESS;
 }
 
 static int handleMapAdd(int argc, char *argv[]) {
-  // Add mapping records: map_add <payload>
-  // Format: <id>,<time>,<encMedia>,<trackStatus>,<offset>;...
   if(argc < 2) {
     ESP_LOGW("CLI", "map_add requires a payload\n");
     return CLI_ERROR_COMMAND_NOT_FOUND;
   }
 
-  // Make a copy of the payload since strtok modifies the string
   char payloadCopy[512];
   strncpy(payloadCopy, argv[1], sizeof(payloadCopy) - 1);
   payloadCopy[sizeof(payloadCopy) - 1] = '\0';
 
-  // Parse payload: records separated by ';'
   char *record     = strtok(payloadCopy, ";");
   int   addedCount = 0;
 
   while(record != nullptr) {
-    // Parse record: <id>,<time>,<encMedia>,<trackStatus>,<offset>
     int id, time, encMedia, trackStatus, offset;
     if(sscanf(record, "%d,%d,%d,%d,%d", &id, &time, &encMedia, &trackStatus,
               &offset) == 5) {
@@ -292,34 +283,30 @@ static int handleMapAdd(int argc, char *argv[]) {
 }
 
 static int handleMapSaveRuntime(int argc, char *argv[]) {
-  // Save RAM mapping to Flash (for now, just acknowledge since we don't have
-  // separate Flash storage)
   return CLI_SUCCESS;
 }
 
 static int handleMapGet(int argc, char *argv[]) {
-  // Get Flash mapping data (for now, same as RAM)
   if(globalData.mapData.empty()) {
     return CLI_SUCCESS;
   }
 
   for(size_t i = 0; i < globalData.mapData.size(); i++) {
     const MapPoint &point = globalData.mapData[i];
-    pushMessageToQueue(globalData, "%zu,%d,%ld,%d,%ld\n", i, 0,
+    pushMessageToQueue("%zu,%d,%ld,%d,%ld\n", i, 0,
                        point.encoderMilimeters, 1, point.baseMotorPWM);
   }
   return CLI_SUCCESS;
 }
 
 static int handleMapGetRuntime(int argc, char *argv[]) {
-  // Get RAM mapping data
   if(globalData.mapData.empty()) {
     return CLI_SUCCESS;
   }
 
   for(size_t i = 0; i < globalData.mapData.size(); i++) {
     const MapPoint &point = globalData.mapData[i];
-    pushMessageToQueue(globalData, "%zu,%d,%ld,%d,%ld\n", i, 0,
+    pushMessageToQueue("%zu,%d,%ld,%d,%ld\n", i, 0,
                        point.encoderMilimeters, 1, point.baseMotorPWM);
   }
   return CLI_SUCCESS;
@@ -327,32 +314,30 @@ static int handleMapGetRuntime(int argc, char *argv[]) {
 
 // Runtime Commands
 static int handleRuntimeList(int argc, char *argv[]) {
-  // List runtime parameters
-  pushMessageToQueue(globalData, "Runtime Parameters:\n");
+  pushMessageToQueue("Runtime Parameters:\n");
   int index = 0;
 
   char value[64];
-  if(getParameterValue("State", "isReadyToRun", value, sizeof(value))) {
-    pushMessageToQueue(globalData, "  %d - State.isReadyToRun: %s\n", index++,
+  if(getParameterValue("State", "robotMode", value, sizeof(value))) {
+    pushMessageToQueue("  %d - State.robotMode: %s\n", index++,
                        value);
   }
   if(getParameterValue("System", "markCount", value, sizeof(value))) {
-    pushMessageToQueue(globalData, "  %d - System.markCount: %s\n", index++,
+    pushMessageToQueue("  %d - System.markCount: %s\n", index++,
                        value);
   }
 
-  // TODO: Add sensor readings and other runtime data as they become available
   return CLI_SUCCESS;
 }
 
 // Control Commands
 static int handlePause(int argc, char *argv[]) {
-  globalData.isReadyToRun.store(false, std::memory_order_relaxed);
+  globalData.robotMode.store(RobotMode::IDLE, std::memory_order_relaxed);
   return CLI_SUCCESS;
 }
 
 static int handleResume(int argc, char *argv[]) {
-  globalData.isReadyToRun.store(true, std::memory_order_relaxed);
+  globalData.robotMode.store(RobotMode::RUNNING, std::memory_order_relaxed);
   return CLI_SUCCESS;
 }
 
@@ -396,28 +381,23 @@ static adc_oneshot_unit_handle_t getBatteryAdcHandle() {
 static int handleBatVoltage(int argc, char *argv[]) {
   adc_oneshot_unit_handle_t adc_handle = getBatteryAdcHandle();
   if(adc_handle == nullptr) {
-    pushMessageToQueue(globalData, "{\"data\": \"0.0\"}");
+    pushMessageToQueue("{\"data\": \"0.0\"}");
     return CLI_SUCCESS;
   }
 
-  // Read ADC value
   int       adc_raw = 0;
   esp_err_t ret     = adc_oneshot_read(adc_handle, ADC_CHANNEL_7, &adc_raw);
 
   if(ret != ESP_OK) {
     ESP_LOGE("CLI", "Failed to read battery voltage ADC: %s",
              esp_err_to_name(ret));
-    pushMessageToQueue(globalData, "{\"data\": \"0.0\"}");
+    pushMessageToQueue("{\"data\": \"0.0\"}");
     return CLI_SUCCESS;
   }
 
-  // Convert ADC reading (0-4095) to millivolts (0-3300mV)
-  // Formula: (adc_raw / 4095) * 3300
-  // Using integer math: (adc_raw * 3300) / 4095
   uint32_t voltage_mv = (static_cast<uint32_t>(adc_raw) * 3300) / 4095;
 
-  // Send response in format "bat_voltage <voltage>"
-  pushMessageToQueue(globalData, "{\"data\": \"%d.0\"}", voltage_mv);
+  pushMessageToQueue("{\"data\": \"%d.0\"}", voltage_mv);
   return CLI_SUCCESS;
 }
 
@@ -446,12 +426,10 @@ static std::unordered_map<std::string, CommandHandler> &getCommandMap() {
 }
 
 int cli(char *command) {
-  // Parse the command into argc and argv format (like C main function)
   const int MAX_ARGS = 16;
   char     *argv[MAX_ARGS];
   int       argc = 0;
 
-  // Tokenize the command string by spaces
   char *token = strtok(command, " \t\n\r");
   while(token != nullptr && argc < MAX_ARGS) {
     argv[argc] = token;
@@ -459,33 +437,27 @@ int cli(char *command) {
     token = strtok(nullptr, " \t\n\r");
   }
 
-  // Check if too many arguments
   if(token != nullptr) {
     ESP_LOGW("CLI", "Too many arguments, max %d\n", MAX_ARGS);
     return CLI_ERROR_TOO_MANY_ARGS;
   }
 
-  // Ensure argv[argc] is NULL (like C main function)
   if(argc < MAX_ARGS) {
     argv[argc] = nullptr;
   }
 
-  // Handle commands using argc and argv
   if(argc == 0) {
     ESP_LOGI("CLI", "Empty command\n");
     return CLI_ERROR_EMPTY_COMMAND;
   }
 
-  // Look up command handler in map
   std::unordered_map<std::string, CommandHandler> &commandMap = getCommandMap();
   auto it = commandMap.find(std::string(argv[0]));
 
   if(it != commandMap.end()) {
-    // Command found, call the handler function
     ESP_LOGI("CLI", "Command found: %s\n", argv[0]);
     return it->second(argc, argv);
   } else {
-    // Command not found
     ESP_LOGI("CLI", "Command not found: %s\n", argv[0]);
     return CLI_ERROR_COMMAND_NOT_FOUND;
   }

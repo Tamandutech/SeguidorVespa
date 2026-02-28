@@ -49,29 +49,29 @@ void uartReceiveCallback(struct ble_gatt_access_ctxt *ctxt) {
     switch(cliResult) {
     case CLI_ERROR_EMPTY_COMMAND:
       ESP_LOGE("CommunicationTask", "CLI Error: Empty command");
-      pushMessageToQueue(globalData, "Error: Empty command");
+      pushMessageToQueue("Error: Empty command");
       break;
     case CLI_ERROR_COMMAND_NOT_FOUND:
       ESP_LOGE("CommunicationTask", "CLI Error: Command not found: %s", buffer);
-      pushMessageToQueue(globalData, "Error: Command not found: %s", buffer);
+      pushMessageToQueue("Error: Command not found: %s", buffer);
       break;
     case CLI_ERROR_TOO_MANY_ARGS:
       ESP_LOGE("CommunicationTask",
                "CLI Error: Too many arguments for command: %s", buffer);
-      pushMessageToQueue(globalData, "Error: Too many arguments");
+      pushMessageToQueue("Error: Too many arguments");
       break;
     default:
       ESP_LOGE("CommunicationTask",
                "CLI Error: Unknown error (code: %d) for command: %s", cliResult,
                buffer);
-      pushMessageToQueue(globalData, "Error: Unknown error (code: %d)",
+      pushMessageToQueue("Error: Unknown error (code: %d)",
                          cliResult);
       break;
     }
   }
 
-  ESP_LOGI("CommunicationTask", "isReadyToRun: %d",
-           globalData.isReadyToRun.load(std::memory_order_relaxed));
+  ESP_LOGI("CommunicationTask", "robotMode: %d",
+           globalData.robotMode.load(std::memory_order_relaxed));
 }
 
 // Processa mensagens da fila de comunicação
@@ -94,8 +94,7 @@ void communicationTaskLoop(void *params) {
   Message receivedMessage;
 
   for(;;) {
-    // Check for messages from the queue
-    if(xQueueReceive(param->globalData.communicationQueue, &receivedMessage,
+    if(xQueueReceive(globalData.communicationQueue, &receivedMessage,
                      pdMS_TO_TICKS(100)) == pdTRUE) {
       processMessage(receivedMessage);
     }

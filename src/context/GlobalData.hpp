@@ -7,8 +7,19 @@
 #include <cstring>
 #include <vector>
 
+#include "drivers/EncoderDriver/EncoderDriver.hpp"
+#include "drivers/IRSensorDriver/IRSensorDriver.hpp"
+#include "drivers/MotorDriver/MotorDriver.hpp"
+#include "drivers/VacuumDriver/VacuumDriver.hpp"
+
 // Message types for inter-task communication
 enum class MessageType { LOG };
+
+enum class RobotMode {
+  CALIBRATION,
+  IDLE,
+  RUNNING,
+};
 
 #define MESSAGE_LOG_NAME_SIZE    32
 #define MESSAGE_LOG_MESSAGE_SIZE 256
@@ -30,7 +41,13 @@ struct MapPoint {
 };
 
 struct GlobalData {
-  std::atomic<bool> isReadyToRun = false;
+  // FreeRTOS queue for inter-task communication
+  QueueHandle_t communicationQueue;
+
+  /* Communication should only write on the variables below when the robot is in
+   * IDLE mode */
+
+  std::atomic<RobotMode> robotMode = RobotMode::IDLE;
 
   std::atomic<int32_t> finishLineCount = 14900;
 
@@ -42,8 +59,18 @@ struct GlobalData {
 
   std::atomic<int32_t> markCount = 0;
 
-  // FreeRTOS queue for inter-task communication
-  QueueHandle_t communicationQueue;
-} globalData;
+  // Pins and drivers (initialized in MainTask during calibration mode)
+  MotorPins    motorPins   = {};
+  MotorDriver *motorDriver = nullptr;
+
+  IRSensorDriver *irSensorDriver = nullptr;
+
+  EncoderDriver *encoderLeftDriver  = nullptr;
+  EncoderDriver *encoderRightDriver = nullptr;
+
+  VacuumPins    vacuumPins   = {};
+  VacuumDriver *vacuumDriver = nullptr;
+
+} static globalData;
 
 #endif // GLOBAL_DATA_CONTEXT_HPP
