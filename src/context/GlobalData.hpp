@@ -15,12 +15,6 @@
 // Message types for inter-task communication
 enum class MessageType { LOG };
 
-enum class RobotMode {
-  CALIBRATION,
-  IDLE,
-  RUNNING,
-};
-
 #define MESSAGE_LOG_NAME_SIZE    32
 #define MESSAGE_LOG_MESSAGE_SIZE 256
 
@@ -46,8 +40,6 @@ struct GlobalData {
 
   /* Communication should only write on the variables below when the robot is in
    * IDLE mode */
-
-  std::atomic<RobotMode> robotMode = RobotMode::IDLE;
 
   std::atomic<int32_t> finishLineCount = 14900;
 

@@ -12,6 +12,7 @@
 #include "../lib/CommunicationUtils.hpp"
 #include "context/GlobalData.hpp"
 #include "context/RobotEnv.hpp"
+#include "context/RobotStateMachine.hpp"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_err.h"
 
@@ -91,9 +92,8 @@ ParseError parseClassNameParameter(const char *input, ParsedReference &result) {
 }
 
 // Helper function to get parameter value as string
-bool getParameterValue(const char *className,
-                       const char *parameterName, char *valueBuffer,
-                       size_t bufferSize) {
+bool getParameterValue(const char *className, const char *parameterName,
+                       char *valueBuffer, size_t bufferSize) {
   // System parameters
   if(strcmp(className, "System") == 0) {
     if(strcmp(parameterName, "finishLineCount") == 0) {
@@ -111,8 +111,8 @@ bool getParameterValue(const char *className,
   // State parameters
   if(strcmp(className, "State") == 0) {
     if(strcmp(parameterName, "robotMode") == 0) {
-      RobotMode mode = globalData.robotMode.load(std::memory_order_relaxed);
-      snprintf(valueBuffer, bufferSize, "%d", static_cast<int>(mode));
+      RobotState state = RobotStateMachine::get();
+      snprintf(valueBuffer, bufferSize, "%d", static_cast<int>(state));
       return true;
     }
   }
@@ -122,8 +122,8 @@ bool getParameterValue(const char *className,
 }
 
 // Helper function to set parameter value
-bool setParameterValue(const char *className,
-                      const char *parameterName, const char *value) {
+bool setParameterValue(const char *className, const char *parameterName,
+                       const char *value) {
   // Handle negative values (prefixed with !)
   bool        isNegative  = (value[0] == '!');
   const char *actualValue = isNegative ? value + 1 : value;
@@ -147,13 +147,16 @@ bool setParameterValue(const char *className,
   // State parameters
   if(strcmp(className, "State") == 0) {
     if(strcmp(parameterName, "robotMode") == 0) {
-      int       val  = atoi(actualValue);
-      RobotMode mode = RobotMode::IDLE;
-      if(val == 1)
-        mode = RobotMode::RUNNING;
-      else if(val == 2)
-        mode = RobotMode::CALIBRATION;
-      globalData.robotMode.store(mode, std::memory_order_relaxed);
+      int val = atoi(actualValue);
+      if(val == 0)
+        RobotStateMachine::toIdle(globalData.motorDriver,
+                                  globalData.vacuumDriver);
+      else if(val == 1) {
+        RobotStateMachine::toRunning(globalData.encoderLeftDriver,
+                                     globalData.encoderRightDriver,
+                                     globalData.vacuumDriver);
+      } else if(val == 2)
+        RobotStateMachine::toCalibration();
       return true;
     }
   }
@@ -174,17 +177,14 @@ static int handleParamList(int argc, char *argv[]) {
 
   char value[64];
   if(getParameterValue("System", "finishLineCount", value, sizeof(value))) {
-    pushMessageToQueue("  %d - System.finishLineCount: %s\n",
-                       index++, value);
+    pushMessageToQueue("  %d - System.finishLineCount: %s\n", index++, value);
   }
   if(getParameterValue("System", "markCount", value, sizeof(value))) {
-    pushMessageToQueue("  %d - System.markCount: %s\n", index++,
-                       value);
+    pushMessageToQueue("  %d - System.markCount: %s\n", index++, value);
   }
 
   if(getParameterValue("State", "robotMode", value, sizeof(value))) {
-    pushMessageToQueue("  %d - State.robotMode: %s\n", index++,
-                       value);
+    pushMessageToQueue("  %d - State.robotMode: %s\n", index++, value);
   }
 
   return CLI_SUCCESS;
@@ -282,9 +282,7 @@ static int handleMapAdd(int argc, char *argv[]) {
   }
 }
 
-static int handleMapSaveRuntime(int argc, char *argv[]) {
-  return CLI_SUCCESS;
-}
+static int handleMapSaveRuntime(int argc, char *argv[]) { return CLI_SUCCESS; }
 
 static int handleMapGet(int argc, char *argv[]) {
   if(globalData.mapData.empty()) {
@@ -293,8 +291,8 @@ static int handleMapGet(int argc, char *argv[]) {
 
   for(size_t i = 0; i < globalData.mapData.size(); i++) {
     const MapPoint &point = globalData.mapData[i];
-    pushMessageToQueue("%zu,%d,%ld,%d,%ld\n", i, 0,
-                       point.encoderMilimeters, 1, point.baseMotorPWM);
+    pushMessageToQueue("%zu,%d,%ld,%d,%ld\n", i, 0, point.encoderMilimeters, 1,
+                       point.baseMotorPWM);
   }
   return CLI_SUCCESS;
 }
@@ -306,8 +304,8 @@ static int handleMapGetRuntime(int argc, char *argv[]) {
 
   for(size_t i = 0; i < globalData.mapData.size(); i++) {
     const MapPoint &point = globalData.mapData[i];
-    pushMessageToQueue("%zu,%d,%ld,%d,%ld\n", i, 0,
-                       point.encoderMilimeters, 1, point.baseMotorPWM);
+    pushMessageToQueue("%zu,%d,%ld,%d,%ld\n", i, 0, point.encoderMilimeters, 1,
+                       point.baseMotorPWM);
   }
   return CLI_SUCCESS;
 }
@@ -319,12 +317,10 @@ static int handleRuntimeList(int argc, char *argv[]) {
 
   char value[64];
   if(getParameterValue("State", "robotMode", value, sizeof(value))) {
-    pushMessageToQueue("  %d - State.robotMode: %s\n", index++,
-                       value);
+    pushMessageToQueue("  %d - State.robotMode: %s\n", index++, value);
   }
   if(getParameterValue("System", "markCount", value, sizeof(value))) {
-    pushMessageToQueue("  %d - System.markCount: %s\n", index++,
-                       value);
+    pushMessageToQueue("  %d - System.markCount: %s\n", index++, value);
   }
 
   return CLI_SUCCESS;
@@ -332,12 +328,14 @@ static int handleRuntimeList(int argc, char *argv[]) {
 
 // Control Commands
 static int handlePause(int argc, char *argv[]) {
-  globalData.robotMode.store(RobotMode::IDLE, std::memory_order_relaxed);
+  RobotStateMachine::toIdle(globalData.motorDriver, globalData.vacuumDriver);
   return CLI_SUCCESS;
 }
 
 static int handleResume(int argc, char *argv[]) {
-  globalData.robotMode.store(RobotMode::RUNNING, std::memory_order_relaxed);
+  RobotStateMachine::toRunning(globalData.encoderLeftDriver,
+                               globalData.encoderRightDriver,
+                               globalData.vacuumDriver);
   return CLI_SUCCESS;
 }
 

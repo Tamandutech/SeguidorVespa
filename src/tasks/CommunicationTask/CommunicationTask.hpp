@@ -10,6 +10,7 @@
 
 #include "cli/cli.hpp"
 #include "context/GlobalData.hpp"
+#include "context/RobotStateMachine.hpp"
 #include "lib/CommunicationUtils.hpp"
 
 struct CommunicationTaskParamSchema {
@@ -64,14 +65,13 @@ void uartReceiveCallback(struct ble_gatt_access_ctxt *ctxt) {
       ESP_LOGE("CommunicationTask",
                "CLI Error: Unknown error (code: %d) for command: %s", cliResult,
                buffer);
-      pushMessageToQueue("Error: Unknown error (code: %d)",
-                         cliResult);
+      pushMessageToQueue("Error: Unknown error (code: %d)", cliResult);
       break;
     }
   }
 
   ESP_LOGI("CommunicationTask", "robotMode: %d",
-           globalData.robotMode.load(std::memory_order_relaxed));
+           static_cast<int>(RobotStateMachine::get()));
 }
 
 // Processa mensagens da fila de comunicação
