@@ -33,8 +33,6 @@ void app_main() {
   // Storage::write(globalData.randomFloat.load(std::memory_order_relaxed));
   // Storage::write(globalData.randomBool.load(std::memory_order_relaxed));
 
-  MainTaskParamSchema          mainTaskParam          = {globalData};
-  CommunicationTaskParamSchema communicationTaskParam = {globalData};
 
   // Task
   // 1 word = 4 bytes
@@ -43,10 +41,10 @@ void app_main() {
   // Core 1 Application
   TaskHandle_t communicationTaskHandle;
   xTaskCreatePinnedToCore(communicationTaskLoop, "CommunicationTask", 60000,
-                          &communicationTaskParam, 15, &communicationTaskHandle,
+                          nullptr, 15, &communicationTaskHandle,
                           0); // Run on Core 0
   TaskHandle_t mainTaskHandle;
-  xTaskCreatePinnedToCore(mainTaskLoop, "MainTask", 60000, &mainTaskParam, 16,
+  xTaskCreatePinnedToCore(mainTaskLoop, "MainTask", 60000, nullptr, 16,
                           &mainTaskHandle, 1); // Run on Core 1
 
 

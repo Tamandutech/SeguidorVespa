@@ -22,9 +22,16 @@ class RobotStateMachine {
 public:
   static RobotState get() { return state_.load(std::memory_order_relaxed); }
 
+  /** Register the MainTask handle so it can be suspended/resumed on idle/run. */
+  static void setMainTaskHandle(TaskHandle_t handle) { mainTaskHandle_ = handle; }
+
   static void toCalibration() { setState(RobotState::CALIBRATION); }
 
   static void toIdle(MotorDriver *motorDriver, VacuumDriver *vacuumDriver) {
+    if(mainTaskHandle_ != nullptr) {
+      vTaskSuspend(mainTaskHandle_);
+    }
+
     RobotState last = get();
     if(last == RobotState::IDLE || last == RobotState::CALIBRATION) {
       return;
@@ -64,6 +71,10 @@ public:
     vTaskDelay(4000 / portTICK_PERIOD_MS);
     vacuumDriver->pwmOutput(RobotEnv::BASE_VACUUM_PWM);
     vTaskDelay(1000);
+
+    if(mainTaskHandle_ != nullptr) {
+      vTaskResume(mainTaskHandle_);
+    }
   }
 
 private:
@@ -72,6 +83,7 @@ private:
   }
 
   static inline std::atomic<RobotState> state_{RobotState::IDLE};
+  static inline TaskHandle_t mainTaskHandle_ = nullptr;
 };
 
 #endif // ROBOT_STATE_HPP

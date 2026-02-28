@@ -11,12 +11,9 @@
 
 #include "tasks/MainTask/PathController/PathController.hpp"
 
-struct MainTaskParamSchema {
-  GlobalData &globalData;
-};
 
 void mainTaskLoop(void *params) {
-  MainTaskParamSchema *param = static_cast<MainTaskParamSchema *>(params);
+  RobotStateMachine::setMainTaskHandle(xTaskGetCurrentTaskHandle());
   RobotStateMachine::toCalibration();
 
   int32_t finishLineCount =
@@ -75,8 +72,6 @@ void mainTaskLoop(void *params) {
   };
   PathController *pathController = new PathController(pathControllerParam);
 
-  RobotState lastRobotState = RobotState::IDLE;
-
   bool lastLeftReadIsOnMark  = false;
   bool lastRightReadIsOnMark = false;
 
@@ -105,7 +100,6 @@ void mainTaskLoop(void *params) {
     if(encoderMilimetersAverage > finishLineCount) {
       RobotStateMachine::toIdle(globalData.motorDriver,
                                 globalData.vacuumDriver);
-      lastRobotState = RobotState::IDLE;
       continue;
     }
 

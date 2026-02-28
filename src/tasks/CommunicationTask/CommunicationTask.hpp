@@ -13,9 +13,6 @@
 #include "context/RobotStateMachine.hpp"
 #include "lib/CommunicationUtils.hpp"
 
-struct CommunicationTaskParamSchema {
-  GlobalData &globalData;
-};
 
 // Callback para status de conexão da UART BLE
 void uartStatusChangeCallback(enum nordic_uart_callback_type callback_type) {
@@ -25,7 +22,6 @@ void uartStatusChangeCallback(enum nordic_uart_callback_type callback_type) {
     ESP_LOGI("CommunicationTask", "BLE UART disconnected");
   }
 }
-
 
 // Callback para receber dados da UART BLE
 void uartReceiveCallback(struct ble_gatt_access_ctxt *ctxt) {
@@ -85,9 +81,6 @@ void processMessage(const Message &msg) {
 }
 
 void communicationTaskLoop(void *params) {
-  CommunicationTaskParamSchema *param =
-      static_cast<CommunicationTaskParamSchema *>(params);
-
   nordic_uart_start("TT_SEGUIDOR", uartStatusChangeCallback);
   nordic_uart_yield(uartReceiveCallback);
 
