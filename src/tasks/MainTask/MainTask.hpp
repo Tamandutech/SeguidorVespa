@@ -13,6 +13,7 @@
 
 
 void mainTaskLoop(void *params) {
+  (void)params;
   RobotStateMachine::setMainTaskHandle(xTaskGetCurrentTaskHandle());
   RobotStateMachine::toCalibration();
 

@@ -41,10 +41,10 @@ void app_main() {
   // Core 1 Application
   TaskHandle_t communicationTaskHandle;
   xTaskCreatePinnedToCore(communicationTaskLoop, "CommunicationTask", 60000,
-                          nullptr, 15, &communicationTaskHandle,
+                          NULL, 15, &communicationTaskHandle,
                           0); // Run on Core 0
   TaskHandle_t mainTaskHandle;
-  xTaskCreatePinnedToCore(mainTaskLoop, "MainTask", 60000, nullptr, 16,
+  xTaskCreatePinnedToCore(mainTaskLoop, "MainTask", 60000, NULL, 16,
                           &mainTaskHandle, 1); // Run on Core 1
 
 
