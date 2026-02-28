@@ -1,11 +1,13 @@
 #ifndef COMMUNICATION_UTILS_HPP
 #define COMMUNICATION_UTILS_HPP
 
+#include <cstdarg>
+
 #include "esp_log.h"
 
 #include "context/GlobalData.hpp"
 
-void pushMessageToQueue(GlobalData &globalData, const char *message, ...) {
+void pushMessageToQueue(const char *message, ...) {
   Message msg;
   msg.header.type = MessageType::LOG;
 
