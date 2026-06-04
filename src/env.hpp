@@ -7,8 +7,8 @@
 #define WHEEL_CIRCUMFERENCE         (70)
 #define ENCODER_PULSES_PER_ROTATION (4095)
 
-#define MAPPING_MOTOR_PWM (10)
-#define BASE_VACUUM_PWM   (100)
+#define MOTOR_MAPPING_PWM (10)
+#define VACUUM_BASE_PWM   (100)
 
 #define MAX_MOTOR_PWM (66)
 
