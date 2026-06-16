@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cstdlib>
-#include <cstring>
 #include <string>
 #include <vector>
 
@@ -20,26 +19,27 @@ namespace {
 const char *TAG = "cli_map";
 } // namespace
 
-bool parseMapAddBodyFields(const WireCommand &w, int argStart,
-                           int32_t *vacuumPWM, int32_t *encMedia,
-                           int *trackStatus, int32_t *offset) {
-  if(w.argc < argStart + 4) {
+bool parseMapAddBodyFields(const wire::WireView &view, int32_t *vacuumPWM,
+                           int32_t *encMedia, int *trackStatus,
+                           int32_t *offset) {
+  if(view.payloadArgc() < 4) {
     return false;
   }
-  *vacuumPWM   = static_cast<int32_t>(atoi(w.argv[argStart]));
-  *encMedia    = static_cast<int32_t>(atoi(w.argv[argStart + 1]));
-  *trackStatus = atoi(w.argv[argStart + 2]);
-  *offset      = static_cast<int32_t>(atoi(w.argv[argStart + 3]));
+  *vacuumPWM   = static_cast<int32_t>(atoi(view.arg(0)));
+  *encMedia    = static_cast<int32_t>(atoi(view.arg(1)));
+  *trackStatus = atoi(view.arg(2));
+  *offset      = static_cast<int32_t>(atoi(view.arg(3)));
   return true;
 }
 
-int wireMapAddBody(const WireCommand &w, bool sortAfter) {
+bool wireMapAddBody(const wire::WireView &view, CliProtocol &proto,
+                    bool sortAfter) {
   int32_t vacuumPWM, encMedia, offset;
   int     trackStatus = 0;
-  if(!parseMapAddBodyFields(w, 3, &vacuumPWM, &encMedia, &trackStatus,
+  if(!parseMapAddBodyFields(view, &vacuumPWM, &encMedia, &trackStatus,
                             &offset)) {
     ESP_LOGW(TAG, "map_add body: need 4 fields after idx");
-    return CLI_ERROR_COMMAND_NOT_FOUND;
+    return false;
   }
   MapPoint point;
   point.encoderMilimeters = encMedia;
@@ -52,44 +52,40 @@ int wireMapAddBody(const WireCommand &w, bool sortAfter) {
               [](const MapPoint &a, const MapPoint &b) {
                 return a.encoderMilimeters < b.encoderMilimeters;
               });
-    wire::emitSingleResponse("map_add", {"ok"});
+    return proto.emitSingleResponse("map_add", {"ok"});
   }
-  return CLI_SUCCESS;
+  return true;
 }
 
-int wireMapClear() {
+bool wireMapClear(CliProtocol &proto) {
   globalData.mapData.clear();
-  wire::emitSingleResponse("map_clear", {"ok"});
-  return CLI_SUCCESS;
+  return proto.emitSingleResponse("map_clear", {"ok"});
 }
 
-int wireMapClearStorage() {
+bool wireMapClearStorage(CliProtocol &proto) {
   Storage              *storage = Storage::getInstance();
   std::vector<MapPoint> emptyMap;
   esp_err_t             ret = storage->write_vector(emptyMap, MAP_STORAGE_FILE);
   if(ret != ESP_OK) {
     ESP_LOGE(TAG, "map_clear_storage failed (%s)", esp_err_to_name(ret));
-    wire::emitSingleResponse("map_clear_storage",
-                             {"error", "Failed to clear Flash"});
-    return CLI_ERROR_COMMAND_NOT_FOUND;
+    return proto.emitSingleResponse("map_clear_storage",
+                                    {"error", "Failed to clear Flash"});
   }
-  wire::emitSingleResponse("map_clear_storage", {"ok"});
-  return CLI_SUCCESS;
+  return proto.emitSingleResponse("map_clear_storage", {"ok"});
 }
 
-int wireMapSave() {
+bool wireMapSave(CliProtocol &proto) {
   Storage  *storage = Storage::getInstance();
   esp_err_t ret = storage->write_vector(globalData.mapData, MAP_STORAGE_FILE);
   if(ret != ESP_OK) {
     ESP_LOGE(TAG, "map_save failed (%s)", esp_err_to_name(ret));
-    wire::emitSingleResponse("map_save", {"error", "Failed to save to Flash"});
-    return CLI_ERROR_COMMAND_NOT_FOUND;
+    return proto.emitSingleResponse("map_save",
+                                    {"error", "Failed to save to Flash"});
   }
-  wire::emitSingleResponse("map_save", {"ok"});
-  return CLI_SUCCESS;
+  return proto.emitSingleResponse("map_save", {"ok"});
 }
 
-int wireMapGet() {
+bool wireMapGet(CliProtocol &proto) {
   std::vector<std::string> bodies;
   for(size_t i = 0; i < globalData.mapData.size(); i++) {
     const MapPoint &point = globalData.mapData[i];
@@ -101,17 +97,16 @@ int wireMapGet() {
     snprintf(mark, sizeof(mark), "%d", static_cast<int>(point.markType));
     snprintf(motor, sizeof(motor), "%ld",
              static_cast<long>(point.baseMotorPWM));
-    char   piece[wire::kWireLineBufferSize];
-    size_t pp = 0;
-    if(!wire::appendListBody(piece, sizeof(piece), pp, "map_get", 'b', 's',
-                             static_cast<int>(i + 1),
-                             {vacuum, enc, mark, motor})) {
-      return CLI_ERROR_COMMAND_NOT_FOUND;
+    std::string seg =
+        proto.makeListBodySegment("map_get", 's', static_cast<int>(i + 1),
+                                  {vacuum, enc, mark, motor});
+    if(seg.empty()) {
+      return false;
     }
-    bodies.emplace_back(piece);
+    bodies.push_back(std::move(seg));
   }
-  wire::emitListFromBodySegments("map_get", bodies);
-  return CLI_SUCCESS;
+  proto.emitListResponse("map_get", bodies);
+  return true;
 }
 
 } // namespace cli_map

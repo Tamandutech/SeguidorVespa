@@ -2,10 +2,15 @@
 
 #include <vector>
 
-#include "tasks/cli/wire_protocol.hpp"
+#include "tasks/cli/cli.hpp"
+#include "tasks/cli/tamanducli/cli_map.hpp"
+#include "tasks/cli/tamanducli/wprotocol.hpp"
 
 namespace cli_dispatch {
 
-int processWireCommands(std::vector<wire::Command> &cmds);
+void registerCommands(cli::CliMap<kCliMessageSize> &cliMap);
 
-}
+int processWireCommands(cli::CliMap<kCliMessageSize> &cliMap,
+                        std::vector<wire::Command>   &cmds);
+
+} // namespace cli_dispatch

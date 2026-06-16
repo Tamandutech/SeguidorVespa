@@ -164,7 +164,7 @@ void BluetoothTask::processEvent(const BluetoothEvent &event) {
 
 // Executa o parser da CLI e emite respostas de erro compatíveis com o protocolo.
 void BluetoothTask::processIncomingLine(char *line) {
-  const int cliResult = cli(line, stateMachine_);
+  const int cliResult = cli_process(line, stateMachine_);
   if(cliResult != CLI_SUCCESS) {
     switch(cliResult) {
     case CLI_ERROR_EMPTY_COMMAND:

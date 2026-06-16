@@ -2,15 +2,14 @@
 
 #include <cstdio>
 
-#include "esp_log.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_err.h"
-
-#include "context/GlobalData.hpp"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+
+#include "context/GlobalData.hpp"
 #include "tasks/cli/cli.hpp"
-#include "tasks/cli/wire_protocol.hpp"
 #include "tasks/StateMachineTask.hpp"
 
 namespace cli_system {
@@ -54,21 +53,20 @@ adc_oneshot_unit_handle_t getBatteryAdcHandle() {
 
 } // namespace
 
-int wirePause() {
+bool wirePause(CliProtocol &proto) {
   StateMachineTask *sm = cli_active_state_machine();
   if(sm == nullptr) {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
+    return false;
   }
   Event ev{EventType::STOP};
   (void)sm->postEvent(ev, pdMS_TO_TICKS(10));
-  wire::emitSingleResponse("pause", {"ok"});
-  return CLI_SUCCESS;
+  return proto.emitSingleResponse("pause", {"ok"});
 }
 
-int wireResume() {
+bool wireResume(CliProtocol &proto) {
   StateMachineTask *sm = cli_active_state_machine();
   if(sm == nullptr) {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
+    return false;
   }
   Event ev{};
   if(globalData.parametersConfig.runOnMappingMode) {
@@ -77,17 +75,15 @@ int wireResume() {
     ev.type = EventType::START;
   }
   (void)sm->postEvent(ev, pdMS_TO_TICKS(10));
-  wire::emitSingleResponse("resume", {"ok"});
-  return CLI_SUCCESS;
+  return proto.emitSingleResponse("resume", {"ok"});
 }
 
-int wireBatVoltage() {
+bool wireBatVoltage(CliProtocol &proto) {
   adc_oneshot_unit_handle_t adc_handle = getBatteryAdcHandle();
   char                        mv[16];
   if(adc_handle == nullptr) {
     snprintf(mv, sizeof(mv), "%d", 0);
-    wire::emitSingleResponse("bat_voltage", {mv});
-    return CLI_SUCCESS;
+    return proto.emitSingleResponse("bat_voltage", {mv});
   }
 
   int       adc_raw = 0;
@@ -97,14 +93,12 @@ int wireBatVoltage() {
     ESP_LOGE(TAG, "Failed to read battery voltage ADC: %s",
              esp_err_to_name(ret));
     snprintf(mv, sizeof(mv), "%d", 0);
-    wire::emitSingleResponse("bat_voltage", {mv});
-    return CLI_SUCCESS;
+    return proto.emitSingleResponse("bat_voltage", {mv});
   }
 
   uint32_t voltage_mv = (static_cast<uint32_t>(adc_raw) * 3300U) / 4095U;
   snprintf(mv, sizeof(mv), "%lu", static_cast<unsigned long>(voltage_mv));
-  wire::emitSingleResponse("bat_voltage", {mv});
-  return CLI_SUCCESS;
+  return proto.emitSingleResponse("bat_voltage", {mv});
 }
 
 } // namespace cli_system

@@ -1,13 +1,11 @@
 #pragma once
 
-#include "tasks/cli/wire_protocol.hpp"
+#include "tasks/cli/cli.hpp"
 
 namespace cli_system {
 
-using WireCommand = wire::Command;
-
-int wirePause();
-int wireResume();
-int wireBatVoltage();
+bool wirePause(CliProtocol &proto);
+bool wireResume(CliProtocol &proto);
+bool wireBatVoltage(CliProtocol &proto);
 
 } // namespace cli_system

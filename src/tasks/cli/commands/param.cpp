@@ -1,6 +1,5 @@
 #include "param.hpp"
 
-#include <cctype>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -202,16 +201,16 @@ bool setParameterValue(const char *className, const char *parameterName,
   return false;
 }
 
-bool paramSetPersistWireError() {
+bool paramSetPersistWireError(CliProtocol &proto) {
   Storage *storage = Storage::getInstance();
   if(!storage->is_mounted()) {
     ESP_LOGW(TAG, "param_set: storage not mounted");
-    wire::emitSingleResponse("param_set", {"error", "storage not mounted"});
+    proto.emitSingleResponse("param_set", {"error", "storage not mounted"});
     return false;
   }
   if(storage->write(globalData.parametersConfig, PARAMETERS_STORAGE_FILE) !=
      ESP_OK) {
-    wire::emitSingleResponse("param_set",
+    proto.emitSingleResponse("param_set",
                              {"error", "failed to save parameters"});
     return false;
   }
@@ -230,7 +229,7 @@ int paramSetRamOnly(const char *refWire, const char *valueWire) {
   return CLI_SUCCESS;
 }
 
-int wireParamList() {
+bool wireParamList(CliProtocol &proto) {
   struct Row {
     const char *nameCol;
     char        valueBuf[64];
@@ -267,75 +266,72 @@ int wireParamList() {
     strncpy(rows.back().valueBuf, v, sizeof(rows.back().valueBuf) - 1);
   }
 
-  std::vector<std::string> rowWire;
-  rowWire.reserve(rows.size());
-  for(const Row &r : rows) {
-    char   piece[wire::kWireLineBufferSize];
-    size_t pp = 0;
-    if(!wire::appendListBody(piece, sizeof(piece), pp, "param_list", 'b', 's',
-                             static_cast<int>(rowWire.size()) + 1,
-                             {r.nameCol, r.valueBuf})) {
-      return CLI_ERROR_COMMAND_NOT_FOUND;
+  std::vector<std::string> bodies;
+  bodies.reserve(rows.size());
+  for(size_t i = 0; i < rows.size(); i++) {
+    const Row &r = rows[i];
+    std::string seg =
+        proto.makeListBodySegment("param_list", 's', static_cast<int>(i + 1),
+                                  {r.nameCol, r.valueBuf});
+    if(seg.empty()) {
+      return false;
     }
-    rowWire.emplace_back(piece);
+    bodies.push_back(std::move(seg));
   }
-  wire::emitListFromBodySegments("param_list", rowWire);
-  return CLI_SUCCESS;
+  proto.emitListResponse("param_list", bodies);
+  return true;
 }
 
-int wireParamGet(const WireCommand &w) {
-  if(w.argc < 3) {
+bool wireParamGet(const wire::WireView &view, CliProtocol &proto) {
+  if(view.payloadArgc() < 1) {
     ESP_LOGW(TAG, "param_get(s,r,ref) missing args");
-    return CLI_ERROR_COMMAND_NOT_FOUND;
+    return false;
   }
   ParsedReference ref;
-  ParseError      pe = parseClassNameParameter(w.argv[2], ref);
+  ParseError      pe = parseClassNameParameter(view.arg(0), ref);
   if(pe != ParseError::SUCCESS) {
     ESP_LOGW(TAG, "param_get: bad ref");
-    return CLI_ERROR_COMMAND_NOT_FOUND;
+    return false;
   }
   char value[64];
   if(!getParameterValue(ref.className, ref.parameterName, value,
                         sizeof(value))) {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
+    return false;
   }
-  wire::emitSingleResponse("param_get", {value});
-  return CLI_SUCCESS;
+  return proto.emitSingleResponse("param_get", {value});
 }
 
-int wireParamSetSingle(const WireCommand &w) {
-  if(w.argc < 4) {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
+bool wireParamSetSingle(const wire::WireView &view, CliProtocol &proto) {
+  if(view.payloadArgc() < 2) {
+    return false;
   }
-  if(paramSetRamOnly(w.argv[2], w.argv[3]) != CLI_SUCCESS) {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
+  if(paramSetRamOnly(view.arg(0), view.arg(1)) != CLI_SUCCESS) {
+    return false;
   }
-  if(!paramSetPersistWireError()) {
-    return CLI_SUCCESS;
+  if(!paramSetPersistWireError(proto)) {
+    return true;
   }
-  wire::emitSingleResponse("param_set", {"ok"});
-  return CLI_SUCCESS;
+  return proto.emitSingleResponse("param_set", {"ok"});
 }
 
-int wireParamSetBodyRamOnly(const WireCommand &w) {
-  if(w.argc < 5) {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
+bool wireParamSetBodyRamOnly(const wire::WireView &view) {
+  if(view.payloadArgc() < 2) {
+    return false;
   }
-  return paramSetRamOnly(w.argv[3], w.argv[4]);
+  return paramSetRamOnly(view.arg(0), view.arg(1)) == CLI_SUCCESS;
 }
 
-int wireParamSetLoneBody(const WireCommand &w) {
-  if(w.argc < 5) {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
+bool wireParamSetLoneBody(const wire::WireView &view, CliProtocol &proto) {
+  if(view.payloadArgc() < 2) {
+    return false;
   }
-  if(paramSetRamOnly(w.argv[3], w.argv[4]) != CLI_SUCCESS) {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
+  if(paramSetRamOnly(view.arg(0), view.arg(1)) != CLI_SUCCESS) {
+    return false;
   }
-  if(!paramSetPersistWireError()) {
-    return CLI_SUCCESS;
+  if(!paramSetPersistWireError(proto)) {
+    return true;
   }
-  wire::emitSingleResponse("param_set", {"ok"});
-  return CLI_SUCCESS;
+  return proto.emitSingleResponse("param_set", {"ok"});
 }
 
 } // namespace cli_param

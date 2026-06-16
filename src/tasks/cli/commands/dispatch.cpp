@@ -1,10 +1,7 @@
 #include "dispatch.hpp"
 
 #include <algorithm>
-#include <cstdlib>
 #include <string>
-#include <unordered_map>
-
 #include <vector>
 
 #include "context/GlobalData.hpp"
@@ -13,7 +10,6 @@
 #include "tasks/cli/commands/map.hpp"
 #include "tasks/cli/commands/param.hpp"
 #include "tasks/cli/commands/system.hpp"
-#include "tasks/cli/wire_protocol.hpp"
 
 namespace cli_dispatch {
 
@@ -21,174 +17,175 @@ using WireCommand = wire::Command;
 
 namespace {
 
-typedef int (*WireSingleRequestFn)(const WireCommand &w);
-
-static int wh_param_list(const WireCommand &w) {
-  if(w.argc != 2) {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
-  }
-  return cli_param::wireParamList();
-}
-
-static int wh_param_get(const WireCommand &w) {
-  if(w.argc < 3) {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
-  }
-  return cli_param::wireParamGet(w);
-}
-
-static int wh_param_set(const WireCommand &w) {
-  if(w.argc < 4) {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
-  }
-  return cli_param::wireParamSetSingle(w);
-}
-
-static int wh_map_clear(const WireCommand &w) {
-  if(w.argc != 2) {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
-  }
-  return cli_map::wireMapClear();
-}
-
-static int wh_map_clear_storage(const WireCommand &w) {
-  if(w.argc != 2) {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
-  }
-  return cli_map::wireMapClearStorage();
-}
-
-static int wh_map_save(const WireCommand &w) {
-  if(w.argc != 2) {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
-  }
-  return cli_map::wireMapSave();
-}
-
-static int wh_map_get(const WireCommand &w) {
-  if(w.argc != 2) {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
-  }
-  return cli_map::wireMapGet();
-}
-
-static int wh_pause(const WireCommand &w) {
-  if(w.argc != 2) {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
-  }
-  return cli_system::wirePause();
-}
-
-static int wh_resume(const WireCommand &w) {
-  if(w.argc != 2) {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
-  }
-  return cli_system::wireResume();
-}
-
-static int wh_bat_voltage(const WireCommand &w) {
-  if(w.argc != 2) {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
-  }
-  return cli_system::wireBatVoltage();
-}
-
-static const std::unordered_map<std::string, WireSingleRequestFn> &
-getWireSingleRequestMap() {
-  static const std::unordered_map<std::string, WireSingleRequestFn> m = {
-      {"param_list",        wh_param_list       },
-      {"param_get",         wh_param_get        },
-      {"param_set",         wh_param_set        },
-      {"map_clear",         wh_map_clear        },
-      {"map_clear_storage", wh_map_clear_storage},
-      {"map_save",          wh_map_save         },
-      {"map_get",           wh_map_get          },
-      {"pause",             wh_pause            },
-      {"resume",            wh_resume           },
-      {"bat_voltage",       wh_bat_voltage      },
-  };
-  return m;
-}
-
-typedef int (*WireLoneListBodyFn)(const WireCommand &w);
-
-static int whLone_map_add(const WireCommand &w) {
-  return cli_map::wireMapAddBody(w, true);
-}
-
-static int whLone_param_set(const WireCommand &w) {
-  return cli_param::wireParamSetLoneBody(w);
-}
-
-static const std::unordered_map<std::string, WireLoneListBodyFn> &
-getWireLoneListBodyMap() {
-  static const std::unordered_map<std::string, WireLoneListBodyFn> m = {
-      {"map_add",   whLone_map_add  },
-      {"param_set", whLone_param_set},
-  };
-  return m;
-}
-
-typedef int (*WireListHeaderBatchFn)(std::vector<WireCommand> &cmds,
-                                     size_t headerIdx, int C, int j);
-
-static int whBatch_map_add(std::vector<WireCommand> &cmds, size_t headerIdx,
-                           int C, int j) {
-  for(int k = 1; k <= C; k++) {
-    int r = cli_map::wireMapAddBody(cmds[headerIdx + static_cast<size_t>(k)],
-                                    false);
-    if(r != CLI_SUCCESS) {
-      return r;
+static int batchMapAdd(std::vector<WireCommand> &cmds, size_t headerIdx,
+                       const wire::ListHeader &hdr, CliProtocol &proto) {
+  for(int k = 1; k <= hdr.C; k++) {
+    WireCommand &bk = cmds[headerIdx + static_cast<size_t>(k)];
+    wire::WireView view{bk};
+    if(!cli_map::wireMapAddBody(view, proto, false)) {
+      return CLI_ERROR_COMMAND_NOT_FOUND;
     }
   }
   std::sort(globalData.mapData.begin(), globalData.mapData.end(),
             [](const MapPoint &a, const MapPoint &b) {
               return a.encoderMilimeters < b.encoderMilimeters;
             });
-  wire::emitBatchAck("map_add", j);
+  proto.emitBatchAck("map_add", hdr.j);
   return CLI_SUCCESS;
 }
 
-static int whBatch_param_set(std::vector<WireCommand> &cmds, size_t headerIdx,
-                             int C, int j) {
-  for(int k = 1; k <= C; k++) {
-    int r = cli_param::wireParamSetBodyRamOnly(
-        cmds[headerIdx + static_cast<size_t>(k)]);
-    if(r != CLI_SUCCESS) {
-      return r;
+static int batchParamSet(std::vector<WireCommand> &cmds, size_t headerIdx,
+                         const wire::ListHeader &hdr, CliProtocol &proto) {
+  for(int k = 1; k <= hdr.C; k++) {
+    WireCommand &bk = cmds[headerIdx + static_cast<size_t>(k)];
+    wire::WireView view{bk};
+    if(!cli_param::wireParamSetBodyRamOnly(view)) {
+      return CLI_ERROR_COMMAND_NOT_FOUND;
     }
   }
-  if(!cli_param::paramSetPersistWireError()) {
+  if(!cli_param::paramSetPersistWireError(proto)) {
     return CLI_SUCCESS;
   }
-  wire::emitBatchAck("param_set", j);
+  proto.emitBatchAck("param_set", hdr.j);
   return CLI_SUCCESS;
 }
 
-static const std::unordered_map<std::string, WireListHeaderBatchFn> &
-getWireListHeaderBatchMap() {
-  static const std::unordered_map<std::string, WireListHeaderBatchFn> m = {
-      {"map_add",   whBatch_map_add  },
-      {"param_set", whBatch_param_set},
-  };
-  return m;
+static int dispatchListHeaderBatch(const WireCommand &header,
+                                   std::vector<WireCommand> &cmds,
+                                   size_t headerIdx, const wire::ListHeader &hdr,
+                                   CliProtocol &proto) {
+  const std::string key = wire::commandKeyLower(header.name);
+  if(key == "map_add") {
+    return batchMapAdd(cmds, headerIdx, hdr, proto);
+  }
+  if(key == "param_set") {
+    return batchParamSet(cmds, headerIdx, hdr, proto);
+  }
+  return CLI_ERROR_COMMAND_NOT_FOUND;
 }
 
-static int dispatchWireSingleRequest(const WireCommand &w) {
-  if(w.mode != 's' || w.role != 'r') {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
+static bool on_param_list(const WireCommand &cmd, wire::WireView view,
+                          CliProtocol &proto) {
+  (void)view;
+  if(cmd.mode != 's' || cmd.role != 'r') {
+    return false;
   }
-  const auto &m  = getWireSingleRequestMap();
-  auto        it = m.find(wire::commandKeyLower(w.name));
-  if(it == m.end()) {
-    return CLI_ERROR_COMMAND_NOT_FOUND;
+  return cli_param::wireParamList(proto);
+}
+
+static bool on_param_get(const WireCommand &cmd, wire::WireView view,
+                         CliProtocol &proto) {
+  if(cmd.mode != 's' || cmd.role != 'r') {
+    return false;
   }
-  return it->second(w);
+  return cli_param::wireParamGet(view, proto);
+}
+
+static bool on_param_set(const WireCommand &cmd, wire::WireView view,
+                         CliProtocol &proto) {
+  if(cmd.role != 'r') {
+    return false;
+  }
+  if(cmd.mode == 's') {
+    return cli_param::wireParamSetSingle(view, proto);
+  }
+  if(cmd.mode == 'b') {
+    return cli_param::wireParamSetLoneBody(view, proto);
+  }
+  return false;
+}
+
+static bool on_map_add(const WireCommand &cmd, wire::WireView view,
+                       CliProtocol &proto) {
+  if(cmd.mode != 'b' || cmd.role != 'r') {
+    return false;
+  }
+  return cli_map::wireMapAddBody(view, proto, true);
+}
+
+static bool on_map_clear(const WireCommand &cmd, wire::WireView view,
+                         CliProtocol &proto) {
+  (void)view;
+  if(cmd.mode != 's' || cmd.role != 'r') {
+    return false;
+  }
+  return cli_map::wireMapClear(proto);
+}
+
+static bool on_map_clear_storage(const WireCommand &cmd, wire::WireView view,
+                                 CliProtocol &proto) {
+  (void)view;
+  if(cmd.mode != 's' || cmd.role != 'r') {
+    return false;
+  }
+  return cli_map::wireMapClearStorage(proto);
+}
+
+static bool on_map_save(const WireCommand &cmd, wire::WireView view,
+                        CliProtocol &proto) {
+  (void)view;
+  if(cmd.mode != 's' || cmd.role != 'r') {
+    return false;
+  }
+  return cli_map::wireMapSave(proto);
+}
+
+static bool on_map_get(const WireCommand &cmd, wire::WireView view,
+                       CliProtocol &proto) {
+  (void)view;
+  if(cmd.mode != 's' || cmd.role != 'r') {
+    return false;
+  }
+  return cli_map::wireMapGet(proto);
+}
+
+static bool on_pause(const WireCommand &cmd, wire::WireView view,
+                     CliProtocol &proto) {
+  (void)view;
+  if(cmd.mode != 's' || cmd.role != 'r') {
+    return false;
+  }
+  return cli_system::wirePause(proto);
+}
+
+static bool on_resume(const WireCommand &cmd, wire::WireView view,
+                      CliProtocol &proto) {
+  (void)view;
+  if(cmd.mode != 's' || cmd.role != 'r') {
+    return false;
+  }
+  return cli_system::wireResume(proto);
+}
+
+static bool on_bat_voltage(const WireCommand &cmd, wire::WireView view,
+                           CliProtocol &proto) {
+  (void)view;
+  if(cmd.mode != 's' || cmd.role != 'r') {
+    return false;
+  }
+  return cli_system::wireBatVoltage(proto);
 }
 
 } // namespace
 
-int processWireCommands(std::vector<wire::Command> &cmds) {
+void registerCommands(cli::CliMap<kCliMessageSize> &cliMap) {
+  cliMap.registerCommand("param_list", on_param_list);
+  cliMap.registerCommand("param_get", on_param_get);
+  cliMap.registerCommand("param_set", on_param_set);
+  cliMap.registerCommand("map_add", on_map_add);
+  cliMap.registerCommand("map_clear", on_map_clear);
+  cliMap.registerCommand("map_clear_storage", on_map_clear_storage);
+  cliMap.registerCommand("map_save", on_map_save);
+  cliMap.registerCommand("map_get", on_map_get);
+  cliMap.registerCommand("pause", on_pause);
+  cliMap.registerCommand("resume", on_resume);
+  cliMap.registerCommand("bat_voltage", on_bat_voltage);
+}
+
+int processWireCommands(cli::CliMap<kCliMessageSize> &cliMap,
+                        std::vector<wire::Command>   &cmds) {
+  CliProtocol &proto = cliMap.protocol();
+
   for(size_t i = 0; i < cmds.size();) {
     WireCommand &w = cmds[i];
     if(w.role != 'r') {
@@ -196,55 +193,31 @@ int processWireCommands(std::vector<wire::Command> &cmds) {
       continue;
     }
     if(w.mode == 'h') {
-      if(w.argc < 6) {
+      wire::ListHeader hdr{};
+      if(!wire::parseListHeader(w, hdr)) {
         return CLI_ERROR_COMMAND_NOT_FOUND;
       }
-      int T = atoi(w.argv[2]);
-      int C = atoi(w.argv[3]);
-      int B = atoi(w.argv[4]);
-      int j = atoi(w.argv[5]);
-      (void)T;
-      (void)B;
-      if(C < 0 || i + 1 + static_cast<size_t>(C) > cmds.size()) {
+      if(hdr.C < 0 || i + 1 + static_cast<size_t>(hdr.C) > cmds.size()) {
         return CLI_ERROR_COMMAND_NOT_FOUND;
       }
-      for(int k = 1; k <= C; k++) {
+      for(int k = 1; k <= hdr.C; k++) {
         WireCommand &bk = cmds[i + static_cast<size_t>(k)];
         if(bk.mode != 'b' || bk.role != 'r' || !wire::nameEq(bk.name, w.name)) {
           return CLI_ERROR_COMMAND_NOT_FOUND;
         }
       }
-      const auto &hm  = getWireListHeaderBatchMap();
-      auto        hit = hm.find(wire::commandKeyLower(w.name));
-      if(hit == hm.end()) {
-        return CLI_ERROR_COMMAND_NOT_FOUND;
-      }
-      int r = hit->second(cmds, i, C, j);
+      const int r = dispatchListHeaderBatch(w, cmds, i, hdr, proto);
       if(r != CLI_SUCCESS) {
         return r;
       }
-      i += 1 + static_cast<size_t>(C);
+      i += 1 + static_cast<size_t>(hdr.C);
       continue;
     }
-    if(w.mode == 'b') {
-      const auto &bm  = getWireLoneListBodyMap();
-      auto        bit = bm.find(wire::commandKeyLower(w.name));
-      if(bit == bm.end()) {
+    if(w.mode == 's' || w.mode == 'b') {
+      if(!cliMap.dispatch(w)) {
         return CLI_ERROR_COMMAND_NOT_FOUND;
       }
-      int r = bit->second(w);
       i++;
-      if(r != CLI_SUCCESS) {
-        return r;
-      }
-      continue;
-    }
-    if(w.mode == 's') {
-      int r = dispatchWireSingleRequest(w);
-      i++;
-      if(r != CLI_SUCCESS) {
-        return r;
-      }
       continue;
     }
     return CLI_ERROR_COMMAND_NOT_FOUND;

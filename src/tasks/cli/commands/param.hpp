@@ -1,10 +1,9 @@
 #pragma once
 
-#include "tasks/cli/wire_protocol.hpp"
+#include "tasks/cli/cli.hpp"
+#include "tasks/cli/tamanducli/wprotocol.hpp"
 
 namespace cli_param {
-
-using WireCommand = wire::Command;
 
 enum class ParseError {
   SUCCESS = 0,
@@ -31,14 +30,14 @@ bool getParameterValue(const char *className, const char *parameterName,
 bool setParameterValue(const char *className, const char *parameterName,
                        const char *value);
 
-bool paramSetPersistWireError();
+bool paramSetPersistWireError(CliProtocol &proto);
 
 int paramSetRamOnly(const char *refWire, const char *valueWire);
 
-int wireParamList();
-int wireParamGet(const WireCommand &w);
-int wireParamSetSingle(const WireCommand &w);
-int wireParamSetBodyRamOnly(const WireCommand &w);
-int wireParamSetLoneBody(const WireCommand &w);
+bool wireParamList(CliProtocol &proto);
+bool wireParamGet(const wire::WireView &view, CliProtocol &proto);
+bool wireParamSetSingle(const wire::WireView &view, CliProtocol &proto);
+bool wireParamSetBodyRamOnly(const wire::WireView &view);
+bool wireParamSetLoneBody(const wire::WireView &view, CliProtocol &proto);
 
 } // namespace cli_param

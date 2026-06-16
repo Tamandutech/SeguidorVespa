@@ -1,6 +1,9 @@
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
+
+#include "tasks/cli/tamanducli/wprotocol.hpp"
 
 class StateMachineTask;
 
@@ -13,8 +16,13 @@ class StateMachineTask;
 #define MAP_STORAGE_FILE        "map_data.dat"
 #define PARAMETERS_STORAGE_FILE "params.dat"
 
-/// Ativo apenas durante a execução de \c cli (thread de comando UART BLE).
+/// Tamanho máximo de cada mensagem wire (alinhado ao NUS BLE).
+constexpr size_t kCliMessageSize = 256;
+
+using CliProtocol = wire::Protocol<kCliMessageSize>;
+
+/// Ativo apenas durante a execução de \c cli_process (thread de comando UART BLE).
 StateMachineTask *cli_active_state_machine();
 
 /// CLI de protocolo wire (`param_list(...)`, `map_get(...)`, …).
-int cli(char *command, StateMachineTask *stateMachine);
+int cli_process(char *command, StateMachineTask *stateMachine);
