@@ -46,7 +46,6 @@ private:
 };
 
 bool EncoderDriver::useInternalWeakPullResistors = true;
-bool EncoderDriver::attachedInterrupt           = false;
 
 EncoderDriver::EncoderDriver() {
   attached   = false;

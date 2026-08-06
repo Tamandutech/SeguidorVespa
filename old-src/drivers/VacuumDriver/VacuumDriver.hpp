@@ -1,8 +1,6 @@
 #ifndef VACUUM_DRIVER_HPP
 #define VACUUM_DRIVER_HPP
 
-#include <cmath>
-
 #include "esp_attr.h"
 #include "esp_system.h"
 
