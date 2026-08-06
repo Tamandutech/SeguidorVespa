@@ -759,17 +759,28 @@ public:
   /**
    * @brief Envia ACK de lote para coleta de listas no host.
    *
-   * Formato: `nome(s,s,<messageIndex>,<messageIndex>,ok);`
+   * Formato multi-mensagem: `nome(s,s,0,B-1,ok);` após a última mensagem.
+   * Mensagem única (B=1): `nome(s,s,0,0,ok);`
    *
+   * @param cmdName Nome do comando da lista.
+   * @param lo Índice inclusive da primeira mensagem confirmada.
+   * @param hi Índice inclusive da última mensagem confirmada.
+   */
+  void emitBatchAckRange(const char *cmdName, int lo, int hi) const {
+    char loBuf[16];
+    char hiBuf[16];
+    snprintf(loBuf, sizeof(loBuf), "%d", lo);
+    snprintf(hiBuf, sizeof(hiBuf), "%d", hi);
+    emitSingleResponse(cmdName, {loBuf, hiBuf, "ok"});
+  }
+
+  /**
+   * @brief Envia ACK para uma única mensagem de lote (`lo == hi == j`).
    * @param cmdName Nome do comando da lista.
    * @param messageIndex Índice `j` da mensagem confirmada.
    */
   void emitBatchAck(const char *cmdName, int messageIndex) const {
-    char lo[16];
-    char hi[16];
-    snprintf(lo, sizeof(lo), "%d", messageIndex);
-    snprintf(hi, sizeof(hi), "%d", messageIndex);
-    emitSingleResponse(cmdName, {lo, hi, "ok"});
+    emitBatchAckRange(cmdName, messageIndex, messageIndex);
   }
 
   /**

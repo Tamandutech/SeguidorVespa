@@ -17,6 +17,14 @@ using WireCommand = wire::Command;
 
 namespace {
 
+static void emitListBatchAckIfComplete(CliProtocol &proto, const char *cmdName,
+                                       const wire::ListHeader &hdr) {
+  if(hdr.B <= 0 || hdr.j != hdr.B - 1) {
+    return;
+  }
+  proto.emitBatchAckRange(cmdName, 0, hdr.B - 1);
+}
+
 static int batchMapAdd(std::vector<WireCommand> &cmds, size_t headerIdx,
                        const wire::ListHeader &hdr, CliProtocol &proto) {
   for(int k = 1; k <= hdr.C; k++) {
@@ -30,7 +38,7 @@ static int batchMapAdd(std::vector<WireCommand> &cmds, size_t headerIdx,
             [](const MapPoint &a, const MapPoint &b) {
               return a.encoderMilimeters < b.encoderMilimeters;
             });
-  proto.emitBatchAck("map_add", hdr.j);
+  emitListBatchAckIfComplete(proto, "map_add", hdr);
   return CLI_SUCCESS;
 }
 
@@ -46,7 +54,7 @@ static int batchParamSet(std::vector<WireCommand> &cmds, size_t headerIdx,
   if(!cli_param::paramSetPersistWireError(proto)) {
     return CLI_SUCCESS;
   }
-  proto.emitBatchAck("param_set", hdr.j);
+  emitListBatchAckIfComplete(proto, "param_set", hdr);
   return CLI_SUCCESS;
 }
 
