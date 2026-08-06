@@ -22,6 +22,7 @@ void app_main(void);
 namespace {
 StateMachineTask gStateMachineTask;
 BluetoothTask    gBluetoothTask(&gStateMachineTask);
+ControlTask      gControlTask(&gStateMachineTask);
 } // namespace
 
 void app_main() {
@@ -39,6 +40,8 @@ void app_main() {
   // BLE + CLI active object (Core 0, lower priority than FSM; NimBLE host is
   // pinned to core 0 in sdkconfig).
   (void)gBluetoothTask.start(4096, 2, 0);
+  // Control loop (Core 1, high priority): polls gRobotState, no event queue.
+  (void)gControlTask.start(4096, 10, 1);
 
   // TASK CREATION END
 
