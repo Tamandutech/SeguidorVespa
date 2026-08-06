@@ -157,13 +157,13 @@ static bool on_resume(const WireCommand &cmd, wire::WireView view,
   return cli_system::wireResume(proto);
 }
 
-static bool on_bat_voltage(const WireCommand &cmd, wire::WireView view,
+static bool on_battery_get(const WireCommand &cmd, wire::WireView view,
                            CliProtocol &proto) {
   (void)view;
   if(cmd.mode != 's' || cmd.role != 'r') {
     return false;
   }
-  return cli_system::wireBatVoltage(proto);
+  return cli_system::wireBatteryGet(proto);
 }
 
 } // namespace
@@ -179,7 +179,7 @@ void registerCommands(cli::CliMap<kCliMessageSize> &cliMap) {
   cliMap.registerCommand("map_get", on_map_get);
   cliMap.registerCommand("pause", on_pause);
   cliMap.registerCommand("resume", on_resume);
-  cliMap.registerCommand("bat_voltage", on_bat_voltage);
+  cliMap.registerCommand("battery_get", on_battery_get);
 }
 
 int processWireCommands(cli::CliMap<kCliMessageSize> &cliMap,

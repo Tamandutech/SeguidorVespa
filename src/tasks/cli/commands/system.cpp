@@ -78,12 +78,12 @@ bool wireResume(CliProtocol &proto) {
   return proto.emitSingleResponse("resume", {"ok"});
 }
 
-bool wireBatVoltage(CliProtocol &proto) {
+bool wireBatteryGet(CliProtocol &proto) {
   adc_oneshot_unit_handle_t adc_handle = getBatteryAdcHandle();
   char                        mv[16];
   if(adc_handle == nullptr) {
     snprintf(mv, sizeof(mv), "%d", 0);
-    return proto.emitSingleResponse("bat_voltage", {mv});
+    return proto.emitSingleResponse("battery_get", {mv});
   }
 
   int       adc_raw = 0;
@@ -93,12 +93,12 @@ bool wireBatVoltage(CliProtocol &proto) {
     ESP_LOGE(TAG, "Failed to read battery voltage ADC: %s",
              esp_err_to_name(ret));
     snprintf(mv, sizeof(mv), "%d", 0);
-    return proto.emitSingleResponse("bat_voltage", {mv});
+    return proto.emitSingleResponse("battery_get", {mv});
   }
 
   uint32_t voltage_mv = (static_cast<uint32_t>(adc_raw) * 3300U) / 4095U;
   snprintf(mv, sizeof(mv), "%lu", static_cast<unsigned long>(voltage_mv));
-  return proto.emitSingleResponse("bat_voltage", {mv});
+  return proto.emitSingleResponse("battery_get", {mv});
 }
 
 } // namespace cli_system
