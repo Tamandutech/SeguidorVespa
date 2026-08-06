@@ -35,11 +35,13 @@ void app_main() {
   // TASK CREATION START
   // Stack sizes are in **words** (typically 4 bytes on ESP32-S3).
   // Largest internal RAM heap block is(~283 KiB)
+  constexpr uint32_t kBluetoothTaskStackWords =
+      16384; // 64 KiB: BLE init + 2 KiB event + CLI
   // State machine (Core 0, medium priority).
   (void)gStateMachineTask.start(2048, 3, 0);
   // BLE + CLI active object (Core 0, lower priority than FSM; NimBLE host is
   // pinned to core 0 in sdkconfig).
-  (void)gBluetoothTask.start(4096, 2, 0);
+  (void)gBluetoothTask.start(kBluetoothTaskStackWords, 2, 0);
   // Control loop (Core 1, high priority): polls gRobotState, no event queue.
   (void)gControlTask.start(4096, 10, 1);
 
