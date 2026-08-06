@@ -17,7 +17,8 @@ constexpr UBaseType_t kQueueDepth = 8;
 
 BluetoothTask *g_bluetoothTask = nullptr;
 
-// Encaminha os callbacks de conexão do Nordic UART para a fila do BluetoothTask.
+// Encaminha os callbacks de conexão do Nordic UART para a fila do
+// BluetoothTask.
 void bleStatusCallback(enum nordic_uart_callback_type callbackType) {
   if(g_bluetoothTask != nullptr) {
     g_bluetoothTask->notifyBleStatus(callbackType);
@@ -56,7 +57,8 @@ bool BluetoothTask::start(uint32_t stackSizeWords, UBaseType_t priority,
   return true;
 }
 
-// Inserção na fila thread-safe usada por callbacks próximos a ISR e pelo código da aplicação.
+// Inserção na fila thread-safe usada por callbacks próximos a ISR e pelo código
+// da aplicação.
 bool BluetoothTask::post(const BluetoothEvent &event, TickType_t timeoutTicks) {
   if(queue_ == nullptr) {
     return false;
@@ -78,7 +80,8 @@ bool BluetoothTask::postOutgoingMessage(const char *fmt, ...) {
   return post(ev, 0);
 }
 
-// Manipulador do callback de RX BLE: copia o payload e insere na fila um evento de linha da CLI.
+// Manipulador do callback de RX BLE: copia o payload e insere na fila um evento
+// de linha da CLI.
 void BluetoothTask::notifyBleRx(struct ble_gatt_access_ctxt *ctxt) {
   uint16_t       data_len = ctxt->om->om_len;
   BluetoothEvent ev{};
@@ -94,7 +97,8 @@ void BluetoothTask::notifyBleRx(struct ble_gatt_access_ctxt *ctxt) {
   }
 }
 
-// Manipulador do callback de estado da conexão BLE: insere na fila eventos de conexão/desconexão.
+// Manipulador do callback de estado da conexão BLE: insere na fila eventos de
+// conexão/desconexão.
 void BluetoothTask::notifyBleStatus(enum nordic_uart_callback_type t) {
   BluetoothEvent ev{};
   ev.kind    = (t == NORDIC_UART_CONNECTED)
@@ -113,7 +117,8 @@ void BluetoothTask::taskEntry(void *param) {
   self->run();
 }
 
-// Tempo de execução do Active Object: inicializa o UART BLE e processa indefinidamente os eventos inseridos na fila.
+// Tempo de execução do Active Object: inicializa o UART BLE e processa
+// indefinidamente os eventos inseridos na fila.
 void BluetoothTask::run() {
   if(nordic_uart_start("TT_SEMREH", bleStatusCallback) != ESP_OK) {
     ESP_LOGE(TAG, "nordic_uart_start failed");
@@ -162,25 +167,32 @@ void BluetoothTask::processEvent(const BluetoothEvent &event) {
   }
 }
 
-// Executa o parser da CLI e emite respostas de erro compatíveis com o protocolo.
+// Executa o parser da CLI e emite respostas de erro compatíveis com o
+// protocolo.
 void BluetoothTask::processIncomingLine(char *line) {
   const int cliResult = cli_process(line, stateMachine_);
   if(cliResult != CLI_SUCCESS) {
+    const char *received = (line != nullptr) ? line : "";
     switch(cliResult) {
     case CLI_ERROR_EMPTY_COMMAND:
-      ESP_LOGE(TAG, "CLI Error: Empty command");
+      ESP_LOGE(TAG, "CLI Error: Empty command (received: \"%s\")", received);
       (void)postOutgoingMessage("Error: Empty command\r\n");
       break;
     case CLI_ERROR_COMMAND_NOT_FOUND:
-      ESP_LOGE(TAG, "CLI Error: Command not found / bad wire segment");
+      ESP_LOGE(
+          TAG,
+          "CLI Error: Command not found / bad wire segment (received: \"%s\")",
+          received);
       (void)postOutgoingMessage("Error: Command not found\r\n");
       break;
     case CLI_ERROR_TOO_MANY_ARGS:
-      ESP_LOGE(TAG, "CLI Error: Too many wire segments");
+      ESP_LOGE(TAG, "CLI Error: Too many wire segments (received: \"%s\")",
+               received);
       (void)postOutgoingMessage("Error: Too many segments\r\n");
       break;
     default:
-      ESP_LOGE(TAG, "CLI Error: Unknown error (code: %d)", cliResult);
+      ESP_LOGE(TAG, "CLI Error: Unknown error (code: %d, received: \"%s\")",
+               cliResult, received);
       (void)postOutgoingMessage("Error: Unknown error (code: %d)\r\n",
                                 cliResult);
       break;
@@ -188,7 +200,8 @@ void BluetoothTask::processIncomingLine(char *line) {
   }
 }
 
-// Auxiliar global usado pelos manipuladores de comando para emitir respostas na linha via fila do Active Object.
+// Auxiliar global usado pelos manipuladores de comando para emitir respostas na
+// linha via fila do Active Object.
 bool bluetoothPushMessage(const char *fmt, ...) {
   if(g_bluetoothTask == nullptr) {
     return false;
