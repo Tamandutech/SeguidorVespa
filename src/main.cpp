@@ -5,71 +5,45 @@
 #include "freertos/task.h"
 #include "freertos/timers.h"
 
-// Context
+// Helpers
 #include "context/GlobalData.hpp"
-#include "context/RobotEnv.hpp"
-// Non-volatile storage
+#include "data_types.hpp"
 #include "storage/storage.hpp"
+#include "tasks/cli/cli.hpp"
 // Tasks
-#include "tasks/CommunicationTask/CommunicationTask.hpp"
-#include "tasks/MainTask/MainTask.hpp"
+#include "tasks/BluetoothTask.hpp"
+#include "tasks/ControlTask.hpp"
+#include "tasks/StateMachineTask.hpp"
 
 extern "C" {
 void app_main(void);
 }
 
+namespace {
+StateMachineTask gStateMachineTask;
+BluetoothTask    gBluetoothTask(&gStateMachineTask);
+ControlTask      gControlTask(&gStateMachineTask);
+} // namespace
+
 void app_main() {
-  esp_log_level_set("QTRSensors", ESP_LOG_INFO);
-
-  // Outgoing BLE/log queue. map_get drains to UART after each line from CLI;
-  // extra depth helps MainTask bursts.
-  globalData.communicationQueue = xQueueCreate(48, sizeof(Message));
-  if(globalData.communicationQueue == NULL) {
-    ESP_LOGE("Main", "Failed to create communication queue");
-    return;
+  Storage *storage = Storage::getInstance();
+  if(storage->mount_storage("/data") == ESP_OK) {
+    (void)storage->read(globalData.parametersConfig, PARAMETERS_STORAGE_FILE);
+    (void)storage->read_vector(globalData.mapData, MAP_STORAGE_FILE);
   }
 
-  globalData.receivedUartMessages =
-      xQueueCreate(24, sizeof(ReceivedUartMessage));
-  if(globalData.receivedUartMessages == NULL) {
-    ESP_LOGE("Main", "Failed to create receivedUartMessages queue");
-    return;
-  }
+  // TASK CREATION START
+  // Stack sizes are in **words** (typically 4 bytes on ESP32-S3).
+  // Largest internal RAM heap block is(~283 KiB)
+  // State machine (Core 0, medium priority).
+  (void)gStateMachineTask.start(2048, 3, 0);
+  // BLE + CLI active object (Core 0, lower priority than FSM; NimBLE host is
+  // pinned to core 0 in sdkconfig).
+  (void)gBluetoothTask.start(4096, 2, 0);
+  // Control loop (Core 1, high priority): polls gRobotState, no event queue.
+  (void)gControlTask.start(4096, 10, 1);
 
-  // Mount FAT before any task runs so BLE param_set / map save see a mounted FS
-  // (CommunicationTask can run before MainTask would otherwise mount here).
-  // {
-  //   Storage  *storage      = Storage::getInstance();
-  //   esp_err_t mount_result = storage->mount_storage("/data");
-  //   if(mount_result != ESP_OK) {
-  //     ESP_LOGE("Main",
-  //              "FAT mount failed (%s); params.dat / map will not persist
-  //              until " "fixed", esp_err_to_name(mount_result));
-  //   }
-  // }
-
-  // Stack sizes are in **words** (typically 4 bytes on ESP32-S3). Two stacks of
-  // 60000 words (~240 KiB each) exceed the largest internal RAM heap block
-  // (~283 KiB), so the second xTaskCreatePinnedToCore can fail silently and
-  // MainTask never runs while BLE still works.
-  constexpr UBaseType_t kCommTaskStackWords = 16384; // 64 KiB
-  constexpr UBaseType_t kMainTaskStackWords = 16384; // 64 KiB
-
-  TaskHandle_t communicationTaskHandle = nullptr;
-  if(xTaskCreatePinnedToCore(communicationTaskLoop, "CommunicationTask",
-                             kCommTaskStackWords, NULL, 15,
-                             &communicationTaskHandle, 0) != pdPASS) {
-    ESP_LOGE("Main", "Failed to create CommunicationTask (heap/stack?)");
-    return;
-  }
-
-  TaskHandle_t mainTaskHandle = nullptr;
-  if(xTaskCreatePinnedToCore(mainTaskLoop, "MainTask", kMainTaskStackWords,
-                             NULL, 16, &mainTaskHandle, 1) != pdPASS) {
-    ESP_LOGE("Main", "Failed to create MainTask (heap/stack?)");
-    return;
-  }
-
+  // TASK CREATION END
 
   for(;;) {
     vTaskSuspend(NULL);
