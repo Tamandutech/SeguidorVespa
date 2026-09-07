@@ -1,6 +1,7 @@
 #include "ControlTask.hpp"
 
 #include "context/GlobalData.hpp"
+#include "data_types.hpp"
 #include "drivers/EncoderDriver/EncoderDriver.hpp"
 #include "drivers/IRSensorDriver/IRSensorDriver.hpp"
 #include "drivers/LedRgbDriver/LedRgbDriver.hpp"
@@ -14,8 +15,8 @@
 namespace {
 const char *TAG = "ControlTask";
 
-constexpr uint8_t kLineSensorCount = 12;
-constexpr uint8_t kSideSensorCount = 4;
+constexpr uint8_t    kLineSensorCount    = 12;
+constexpr uint8_t    kSideSensorCount    = 4;
 constexpr TickType_t kIdleLedPeriodTicks = pdMS_TO_TICKS(250);
 
 const uint8_t kMuxDigitalAddress[]  = GPIO_MULTIPLEXER_DIGITAL_ADDRESS;
@@ -28,14 +29,19 @@ ControlTask::ControlTask(StateMachineTask *stateMachine)
       vacuumDriver_(nullptr), irSensorDriver_(nullptr), encoderLeft_(nullptr),
       encoderRight_(nullptr), pathController_(nullptr), ledRgbDriver_(nullptr),
       lineSensorValues_{}, sideSensorValues_{}, lastState_(RobotState::IDLE),
-      mapPointIndex_(0), finishLineMm_(0), properlyCalibrated_(false),
-      alternateLedColorFlag_(false), lastIdleLedUpdate_(0) {}
+      mapPointIndex_(0), finishLinePulses_(0), properlyCalibrated_(false),
+      alternateLedColorFlag_(false), lastIdleLedUpdate_(0), lastMapSaveTick_(0),
+      lastDerivativeTick_(0), lastDeltaEncoder_(0),
+      lastEncoderDerivative_(0.0F), lastEncoderDerivativeAverage_(0.0F),
+      derivativeInitialized_(false), encoderDerivativeAverage_(nullptr) {}
 
 ControlTask::~ControlTask() {
   if(taskHandle_ != nullptr) {
     vTaskDelete(taskHandle_);
     taskHandle_ = nullptr;
   }
+  delete encoderDerivativeAverage_;
+  encoderDerivativeAverage_ = nullptr;
   delete pathController_;
   delete ledRgbDriver_;
   delete irSensorDriver_;
@@ -71,6 +77,17 @@ void ControlTask::initHardware() {
   if(globalData.parametersConfig.mappingMotorPWM == 0) {
     globalData.parametersConfig.mappingMotorPWM = MOTOR_MAPPING_PWM;
   }
+  if(globalData.parametersConfig.mapPointSaveInterval == 0) {
+    globalData.parametersConfig.mapPointSaveInterval = MAP_POINT_SAVE_INTERVAL;
+  }
+  if(globalData.parametersConfig.mapPointMovingAverageSize == 0) {
+    globalData.parametersConfig.mapPointMovingAverageSize =
+        MAP_POINT_MOVING_AVERAGE_SIZE;
+  }
+  if(globalData.parametersConfig.mapPointDerivativeMargin == 0.0F) {
+    globalData.parametersConfig.mapPointDerivativeMargin =
+        MAP_POINT_DERIVATIVE_MARGIN;
+  }
 
   const MotorPins motorPins = {.gpioDirectionA = GPIO_DIRECTION_A,
                                .gpioDirectionB = GPIO_DIRECTION_B,
@@ -84,9 +101,9 @@ void ControlTask::initHardware() {
   const IRSensorParamSchema irParam = {
       .pins =
           {
-              .gpioMultiplexerDigitalAddress = kMuxDigitalAddress,
-              .gpioMultiplexerAnalogInput    = GPIO_MULTIPLEXER_ANALOG_INPUT,
-          },
+                 .gpioMultiplexerDigitalAddress = kMuxDigitalAddress,
+                 .gpioMultiplexerAnalogInput    = GPIO_MULTIPLEXER_ANALOG_INPUT,
+                 },
       .lineSensorsCount            = kLineSensorCount,
       .lineSensorsMultiplexerIndex = kLineSensorMuxIndex,
       .sideSensorsCount            = kSideSensorCount,
@@ -95,13 +112,15 @@ void ControlTask::initHardware() {
   };
   irSensorDriver_ = new IRSensorDriver(irParam);
 
-  encoderLeft_ = new EncoderDriver();
+  encoderLeft_ = new EncoderDriver(true);
   encoderLeft_->attachFullQuad(GPIO_ENCODER_LEFT_A, GPIO_ENCODER_LEFT_B);
-  encoderRight_ = new EncoderDriver();
+  // Right wheel counts decrease when driving forward; invert so both increase.
+  encoderRight_ = new EncoderDriver(true);
   encoderRight_->attachFullQuad(GPIO_ENCODER_RIGHT_A, GPIO_ENCODER_RIGHT_B);
 
-  const LedRgbPins ledPins = {.gpioData = static_cast<gpio_num_t>(GPIO_LED_DEBUG),
-                              .numLeds  = NUM_LEDS_DEBUG};
+  const LedRgbPins ledPins = {.gpioData =
+                                  static_cast<gpio_num_t>(GPIO_LED_DEBUG),
+                              .numLeds = NUM_LEDS_DEBUG};
   ledRgbDriver_            = new LedRgbDriver(ledPins);
 
   rebuildPathController();
@@ -164,12 +183,11 @@ void ControlTask::calibrateSensors() {
     ESP_LOGW(TAG, "Sensores nao calibrados corretamente");
     if(!calibrationData->initialized || calibrationData->minimum == nullptr ||
        calibrationData->maximum == nullptr) {
-      (void)bluetoothPushMessage(
-          "Error: Sensores calibrados incorretamente "
-          "(initialized: %d, pointers ok: %d)",
-          calibrationData->initialized,
-          calibrationData->minimum != nullptr &&
-              calibrationData->maximum != nullptr);
+      (void)bluetoothPushMessage("Error: Sensores calibrados incorretamente "
+                                 "(initialized: %d, pointers ok: %d)",
+                                 calibrationData->initialized,
+                                 calibrationData->minimum != nullptr &&
+                                     calibrationData->maximum != nullptr);
     }
   } else {
     ESP_LOGI(TAG, "Sensores calibrados");
@@ -209,13 +227,18 @@ void ControlTask::stopActuators() {
   }
 }
 
-void ControlTask::onEnterMotionState() {
+void ControlTask::onEnterMotionState(RobotState newState) {
   rebuildPathController();
-  mapPointIndex_          = 0;
-  finishLineMm_           = 0;
-  alternateLedColorFlag_  = false;
-  if(!globalData.mapData.empty()) {
-    finishLineMm_ = globalData.mapData.back().encoderMilimeters;
+  mapPointIndex_         = 0;
+  finishLinePulses_      = 0;
+  alternateLedColorFlag_ = false;
+  if(newState == RobotState::MAPPING) {
+    globalData.mapData.clear();
+    globalData.mapData.reserve(256);
+    lastMapSaveTick_ = xTaskGetTickCount();
+    resetMappingDerivative();
+  } else if(newState == RobotState::RUNNING && !globalData.mapData.empty()) {
+    finishLinePulses_ = mapPointProgress(globalData.mapData.back());
   }
   if(encoderLeft_ != nullptr) {
     encoderLeft_->clearCount();
@@ -228,6 +251,15 @@ void ControlTask::onEnterMotionState() {
     ledRgbDriver_->setColor(0, LED_COLOR_GREEN);
     ledRgbDriver_->refresh();
   }
+}
+
+void ControlTask::onLeaveMotionState(RobotState previousState) {
+  if(previousState == RobotState::MAPPING) {
+    appendMapPoint(MapPoint::STOP_COMMAND_MARK, lastEncoderDerivative_,
+                   lastEncoderDerivativeAverage_);
+  }
+  stopActuators();
+  lastIdleLedUpdate_ = 0;
 }
 
 void ControlTask::updateIdleLeds() {
@@ -261,13 +293,141 @@ void ControlTask::updateIdleLeds() {
   ledRgbDriver_->refresh();
 }
 
-int32_t ControlTask::encoderAverageMm() const {
+int32_t ControlTask::encoderAverage() const {
   if(encoderLeft_ == nullptr || encoderRight_ == nullptr) {
     return 0;
   }
-  const int32_t pulses =
-      (encoderLeft_->getCount() + encoderRight_->getCount()) / 2;
-  return (pulses * WHEEL_CIRCUMFERENCE / ENCODER_PULSES_PER_ROTATION) * -1;
+  return (encoderLeft_->getCount() + encoderRight_->getCount()) / 2;
+}
+
+MapPoint ControlTask::currentMapPoint(MapPoint::PointType pointType,
+                                      float               encoderDerivative,
+                                      float encoderDerivativeAverage) const {
+  const int32_t left = encoderLeft_ != nullptr ? encoderLeft_->getCount() : 0;
+  const int32_t right =
+      encoderRight_ != nullptr ? encoderRight_->getCount() : 0;
+  MapPoint point;
+  point.encoderLeft              = left;
+  point.encoderRight             = right;
+  point.encoderDerivative        = encoderDerivative;
+  point.encoderDerivativeAverage = encoderDerivativeAverage;
+  point.speed = static_cast<float>(globalData.parametersConfig.mappingMotorPWM);
+  point.pointType = pointType;
+  return point;
+}
+
+void ControlTask::resetMappingDerivative() {
+  lastDeltaEncoder_             = 0;
+  lastEncoderDerivative_        = 0.0F;
+  lastEncoderDerivativeAverage_ = 0.0F;
+  lastDerivativeTick_           = xTaskGetTickCount();
+  derivativeInitialized_        = false;
+
+  size_t window = static_cast<size_t>(
+      globalData.parametersConfig.mapPointMovingAverageSize);
+  if(window < 2U) {
+    window = MAP_POINT_MOVING_AVERAGE_SIZE;
+  }
+
+  delete encoderDerivativeAverage_;
+  encoderDerivativeAverage_ = new DataTomeMvAvg<float>(window);
+}
+
+void ControlTask::recordTransitionLed() {
+  alternateLedColorFlag_ = !alternateLedColorFlag_;
+  if(ledRgbDriver_ != nullptr) {
+    ledRgbDriver_->setColor(0, alternateLedColorFlag_ ? LED_COLOR_ORANGE
+                                                      : LED_COLOR_CYAN);
+    ledRgbDriver_->refresh();
+  }
+}
+
+void ControlTask::appendMapPoint(MapPoint::PointType pointType,
+                                 float               encoderDerivative,
+                                 float               encoderDerivativeAverage) {
+  if(globalData.mapData.size() >= static_cast<size_t>(MAP_POINT_MAX_COUNT)) {
+    return;
+  }
+  globalData.mapData.push_back(
+      currentMapPoint(pointType, encoderDerivative, encoderDerivativeAverage));
+  lastMapSaveTick_ = xTaskGetTickCount();
+}
+
+void ControlTask::maybeRecordMapPoint() {
+  const int32_t left = encoderLeft_ != nullptr ? encoderLeft_->getCount() : 0;
+  const int32_t right =
+      encoderRight_ != nullptr ? encoderRight_->getCount() : 0;
+  // const int32_t    deltaEncoder = right - left;
+  const TickType_t now = xTaskGetTickCount();
+
+  // if(!derivativeInitialized_) {
+  //   lastDeltaEncoder_      = deltaEncoder;
+  //   lastDerivativeTick_    = now;
+  //   derivativeInitialized_ = true;
+  //   return;
+  // }
+
+  // if(now == lastDerivativeTick_) {
+  //   return;
+  // }
+
+  // const float deltaTimeMs =
+  //     static_cast<float>((now - lastDerivativeTick_) * portTICK_PERIOD_MS);
+  // if(deltaTimeMs <= 0.0F) {
+  //   lastDeltaEncoder_   = deltaEncoder;
+  //   lastDerivativeTick_ = now;
+  //   return;
+  // }
+
+  // const float encoderDerivative =
+  //     static_cast<float>(deltaEncoder - lastDeltaEncoder_) / deltaTimeMs;
+  // lastDeltaEncoder_   = deltaEncoder;
+  // lastDerivativeTick_ = now;
+
+  // if(encoderDerivativeAverage_ == nullptr) {
+  //   return;
+  // }
+
+  // const size_t sampleCount = encoderDerivativeAverage_->point_count();
+  // const float  average =
+  //     sampleCount > 0U ? encoderDerivativeAverage_->get() : 0.0F;
+  // lastEncoderDerivative_        = encoderDerivative;
+  // lastEncoderDerivativeAverage_ = average;
+
+  // if(sampleCount >= 2U) {
+  //   const float margin =
+  //   globalData.parametersConfig.mapPointDerivativeMargin; MapPoint::PointType
+  //   transitionType = MapPoint::UNKNOWN_MARK; if(encoderDerivative > (average
+  //   + margin)) {
+  //     transitionType = MapPoint::CURVE_START_MARK;
+  //   } else if(encoderDerivative < (average - margin)) {
+  //     transitionType = MapPoint::CURVE_END_MARK;
+  //   }
+
+  //   if(transitionType != MapPoint::UNKNOWN_MARK) {
+  //     int32_t intervalMs = globalData.parametersConfig.mapPointSaveInterval;
+  //     if(intervalMs < 1) {
+  //       intervalMs = 1;
+  //     }
+  //     if((now - lastMapSaveTick_) >=
+  //        pdMS_TO_TICKS(static_cast<uint32_t>(intervalMs))) {
+  //       appendMapPoint(transitionType, encoderDerivative, average);
+  //       recordTransitionLed();
+  //     }
+  //   }
+  // }
+
+  int32_t intervalMs = globalData.parametersConfig.mapPointSaveInterval;
+  if(intervalMs < 1) {
+    intervalMs = 1;
+  }
+  if((now - lastMapSaveTick_) >=
+     pdMS_TO_TICKS(static_cast<uint32_t>(intervalMs))) {
+    appendMapPoint(MapPoint::AUTO_MARK, 0.0F, 0.0F);
+    recordTransitionLed();
+  }
+
+  // encoderDerivativeAverage_->push(encoderDerivative);
 }
 
 void ControlTask::tickStopped() {
@@ -276,9 +436,9 @@ void ControlTask::tickStopped() {
 }
 
 void ControlTask::tickRunning() {
-  const int32_t distanceMm = encoderAverageMm();
+  const int32_t progress = encoderAverage();
 
-  if(finishLineMm_ > 0 && distanceMm > finishLineMm_) {
+  if(finishLinePulses_ > 0 && progress > finishLinePulses_) {
     stopActuators();
     if(ledRgbDriver_ != nullptr) {
       ledRgbDriver_->setColor(0, LED_COLOR_RED);
@@ -294,7 +454,7 @@ void ControlTask::tickRunning() {
   irSensorDriver_->readCalibrated(lineSensorValues_, sideSensorValues_);
 
   if(!globalData.mapData.empty() &&
-     distanceMm > globalData.mapData[mapPointIndex_].encoderMilimeters &&
+     progress > mapPointProgress(globalData.mapData[mapPointIndex_]) &&
      (mapPointIndex_ + 1U) < globalData.mapData.size()) {
     mapPointIndex_++;
     alternateLedColorFlag_ = !alternateLedColorFlag_;
@@ -306,9 +466,10 @@ void ControlTask::tickRunning() {
   }
 
   const float   pathPid = pathController_->getPID();
-  const int32_t basePwm = globalData.mapData.empty()
-                            ? 0
-                            : globalData.mapData[mapPointIndex_].baseMotorPWM;
+  const int32_t basePwm =
+      globalData.mapData.empty()
+          ? 0
+          : static_cast<int32_t>(globalData.mapData[mapPointIndex_].speed);
 
   motorDriver_->pwmOutput(basePwm + static_cast<int32_t>(pathPid),
                           basePwm - static_cast<int32_t>(pathPid));
@@ -324,6 +485,8 @@ void ControlTask::tickMapping() {
   motorDriver_->pwmOutput(static_cast<int32_t>(base + pathPid),
                           static_cast<int32_t>(base - pathPid));
   vacuumDriver_->pwmOutput(globalData.parametersConfig.vacuumPWM);
+
+  maybeRecordMapPoint();
 }
 
 void ControlTask::run() {
@@ -342,10 +505,12 @@ void ControlTask::run() {
       const bool isMoving =
           state == RobotState::RUNNING || state == RobotState::MAPPING;
       if(isMoving && !wasMoving) {
-        onEnterMotionState();
+        onEnterMotionState(state);
       } else if(!isMoving && wasMoving) {
-        stopActuators();
-        lastIdleLedUpdate_ = 0;
+        onLeaveMotionState(lastState_);
+      } else if(isMoving && wasMoving) {
+        onLeaveMotionState(lastState_);
+        onEnterMotionState(state);
       }
       lastState_ = state;
     }
@@ -361,6 +526,6 @@ void ControlTask::run() {
     }
 
     // Período fixo ~1 ms; sem printf / fila bloqueante no loop crítico.
-    vTaskDelay(pdMS_TO_TICKS(1));
+    // vTaskDelay(pdMS_TO_TICKS(1));
   }
 }

@@ -3,6 +3,9 @@
 
 #include <atomic>
 #include <cmath>
+#include <cstdint>
+
+#include "esp_timer.h"
 
 #include "env.hpp"
 
@@ -49,6 +52,8 @@ public:
 
   float getLineAngle();
 
+  /// Correção PID da posição da linha, com integral e derivada em função de
+  /// \c dt em segundos.
   float getPID();
 
 private:
@@ -62,8 +67,9 @@ private:
   const uint16_t radiusSensor_;   // Raio dos sensores
   const uint16_t sensorToCenter_; // Distância do sensor ao centro
 
-  float integralSummation_;       // Acumulador do termo integral do PID
-  float lastError_; // Último erro calculado para o termo derivativo
+  float   integralSummation_;     // Acumulador do termo integral do PID
+  float   lastError_;     // Último erro calculado para o termo derivativo
+  int64_t lastPidTimeUs_; // Timestamp da última amostra PID (µs)
 
   // Rastreamento do estado dos sensores
   uint32_t lastPosition_; // Última posição calculada da linha
@@ -83,8 +89,8 @@ PathController::PathController(PathControllerParamSchema &param)
       sensorValues_(param.sensorValues),
       maxAngle_(param.maxAngle * M_PI / 180.0F), // Converte graus para radianos
       radiusSensor_(param.radiusSensor), sensorToCenter_(param.sensorToCenter),
-      integralSummation_(0.0F), lastError_(0.0F), lastPosition_(0),
-      onLine_(false) {}
+      integralSummation_(0.0F), lastError_(0.0F), lastPidTimeUs_(0),
+      lastPosition_(0), onLine_(false) {}
 
 /**
  * @brief Calcula a posição da linha em relação aos sensores
@@ -206,22 +212,29 @@ float PathController::getPID() {
   error = error - ((sensorQuantity_ - 1) * 500);
   // printf("Error: %f\n", error);
 
-  // Adiciona o erro ao termo integral
-  integralSummation_ += error;
-
-  // Aplica proteção contra integral windup
-  if(integralSummation_ > INTEGRAL_MAX) {
-    integralSummation_ = INTEGRAL_MAX;
-  } else if(integralSummation_ < INTEGRAL_MIN) {
-    integralSummation_ = INTEGRAL_MIN;
+  const int64_t currentUs = esp_timer_get_time();
+  float         dtS       = 0.0F;
+  if(lastPidTimeUs_ != 0) {
+    dtS = static_cast<float>(currentUs - lastPidTimeUs_) * 1.0e-6F;
   }
+  lastPidTimeUs_ = currentUs;
 
-  float derivative = error - lastError_;
-  lastError_       = error;
+  // if(dtS > EPSILON_TOLERANCE) {
+  //   integralSummation_ += error * dtS;
+  //   if(integralSummation_ > INTEGRAL_MAX) {
+  //     integralSummation_ = INTEGRAL_MAX;
+  //   } else if(integralSummation_ < INTEGRAL_MIN) {
+  //     integralSummation_ = INTEGRAL_MIN;
+  //   }
+  // }
 
-  // return constants_.kP * error + constants_.kI * integralSummation_ +
-  //        constants_.kD * derivative;
-  return constants_.kP * error + constants_.kD * derivative;
+  float derivative = 0.0F;
+  if(dtS > EPSILON_TOLERANCE) {
+    derivative = (error - lastError_) / dtS;
+  }
+  lastError_ = error;
+
+  return constants_.kP * (error + constants_.kD * derivative);
 }
 
 #endif // PATH_CONTROLLER_HPP

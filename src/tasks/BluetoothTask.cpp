@@ -1,11 +1,13 @@
 #include "BluetoothTask.hpp"
 
+#include <cctype>
 #include <cstdarg>
 #include <cstring>
 
 #include "esp_log.h"
 
 #include "host/ble_gatt.h"
+#include "os/os_mbuf.h"
 
 #include "tasks/StateMachineTask.hpp"
 #include "tasks/cli/cli.hpp"
@@ -66,32 +68,99 @@ bool BluetoothTask::post(const BluetoothEvent &event, TickType_t timeoutTicks) {
   return xQueueSend(queue_, &event, timeoutTicks) == pdTRUE;
 }
 
-// Formata uma mensagem de saída e insere na fila para notify BLE no contexto do
-// BluetoothTask.
+bool BluetoothTask::onThisTask() const {
+  return taskHandle_ != nullptr && xTaskGetCurrentTaskHandle() == taskHandle_;
+}
+
 bool BluetoothTask::postOutgoingMessage(const char *fmt, ...) {
-  BluetoothEvent ev{};
-  ev.kind = BluetoothEvent::Kind::OutgoingMessage;
   va_list ap;
   va_start(ap, fmt);
-  (void)vsnprintf(ev.data, sizeof(ev.data), fmt, ap);
+  const bool ok = deliverFormatted(fmt, ap);
   va_end(ap);
+  return ok;
+}
+
+// CLI (esta tarefa): formata num buffer curto e envia na hora, sem enfileirar
+// dumps (`map_get`). ControlTask formata direto no BluetoothEvent e posta —
+// um único ~2 KiB, não dois.
+bool BluetoothTask::deliverFormatted(const char *fmt, va_list ap) {
+  if(fmt == nullptr) {
+    return false;
+  }
+  if(onThisTask()) {
+    char buf[512];
+    (void)vsnprintf(buf, sizeof(buf), fmt, ap);
+    buf[sizeof(buf) - 1] = '\0';
+    return nordic_uart_send(buf) == ESP_OK;
+  }
+  BluetoothEvent ev{};
+  ev.kind = BluetoothEvent::Kind::OutgoingMessage;
+  (void)vsnprintf(ev.data, sizeof(ev.data), fmt, ap);
   ev.data[sizeof(ev.data) - 1] = '\0';
-  ev.len                       = static_cast<uint16_t>(strlen(ev.data));
-  return post(ev, 0);
+  ev.len                      = static_cast<uint16_t>(strlen(ev.data));
+  if(!post(ev, 0)) {
+    ESP_LOGW(TAG, "bluetooth queue full, dropping TX");
+    return false;
+  }
+  return true;
+}
+
+bool BluetoothTask::deliverOutgoing(const char *msg) {
+  if(msg == nullptr) {
+    return false;
+  }
+  if(onThisTask()) {
+    return nordic_uart_send(msg) == ESP_OK;
+  }
+  BluetoothEvent ev{};
+  ev.kind           = BluetoothEvent::Kind::OutgoingMessage;
+  const size_t n    = strlen(msg);
+  const size_t copy = (n < sizeof(ev.data) - 1U) ? n : (sizeof(ev.data) - 1U);
+  memcpy(ev.data, msg, copy);
+  ev.data[copy] = '\0';
+  ev.len        = static_cast<uint16_t>(copy);
+  if(!post(ev, 0)) {
+    ESP_LOGW(TAG, "bluetooth queue full, dropping TX");
+    return false;
+  }
+  return true;
+}
+
+// Copia a cadeia completa de mbufs (um Write GATT pode vir fragmentado).
+static size_t copyMbufChain(const struct os_mbuf *om, char *dst,
+                            size_t maxCopy) {
+  size_t off = 0;
+  for(; om != nullptr && off < maxCopy; om = SLIST_NEXT(om, om_next)) {
+    const size_t chunk = static_cast<size_t>(om->om_len);
+    if(chunk == 0 || om->om_data == nullptr) {
+      continue;
+    }
+    const size_t n = (off + chunk <= maxCopy) ? chunk : (maxCopy - off);
+    memcpy(dst + off, om->om_data, n);
+    off += n;
+  }
+  return off;
+}
+
+static bool wireMessageComplete(const char *buf, size_t len) {
+  while(len > 0 && isspace(static_cast<unsigned char>(buf[len - 1]))) {
+    --len;
+  }
+  return len > 0 && buf[len - 1] == ';';
 }
 
 // Manipulador do callback de RX BLE: copia o payload e insere na fila um evento
 // de linha da CLI.
 void BluetoothTask::notifyBleRx(struct ble_gatt_access_ctxt *ctxt) {
-  uint16_t       data_len = ctxt->om->om_len;
+  if(ctxt == nullptr || ctxt->om == nullptr) {
+    return;
+  }
   BluetoothEvent ev{};
-  ev.kind               = BluetoothEvent::Kind::UartRxLine;
-  const size_t maxCopy  = sizeof(ev.data) - 1U;
-  const size_t dl       = static_cast<size_t>(data_len);
-  const size_t copy_len = dl < maxCopy ? dl : maxCopy;
-  memcpy(ev.data, ctxt->om->om_data, copy_len);
-  ev.data[copy_len] = '\0';
-  ev.len            = static_cast<uint16_t>(strlen(ev.data));
+  ev.kind              = BluetoothEvent::Kind::UartRxLine;
+  const size_t maxCopy = sizeof(ev.data) - 1U;
+  const size_t copy_len = copyMbufChain(ctxt->om, ev.data, maxCopy);
+  ev.data[copy_len]     = '\0';
+  ev.len                = static_cast<uint16_t>(copy_len);
   if(!post(ev, 0)) {
     ESP_LOGW(TAG, "bluetooth queue full, dropping RX");
   }
@@ -142,17 +211,38 @@ void BluetoothTask::run() {
   }
 }
 
+void BluetoothTask::appendIncomingRx(const char *chunk, size_t chunkLen) {
+  if(chunk == nullptr || chunkLen == 0) {
+    return;
+  }
+  const size_t room = sizeof(rxAcc_) - 1U;
+  if(rxAccLen_ + chunkLen > room) {
+    ESP_LOGW(TAG, "CLI RX overflow (%u+%u), dropping buffer",
+             static_cast<unsigned>(rxAccLen_),
+             static_cast<unsigned>(chunkLen));
+    rxAccLen_ = 0;
+    if(chunkLen > room) {
+      return;
+    }
+  }
+  memcpy(rxAcc_ + rxAccLen_, chunk, chunkLen);
+  rxAccLen_ += chunkLen;
+  rxAcc_[rxAccLen_] = '\0';
+
+  if(!wireMessageComplete(rxAcc_, rxAccLen_)) {
+    return;
+  }
+  processIncomingLine(rxAcc_);
+  rxAccLen_    = 0;
+  rxAcc_[0]    = '\0';
+}
+
 // Trata um evento: entrada da CLI, notify de saída ou registro de conexão.
 void BluetoothTask::processEvent(const BluetoothEvent &event) {
   switch(event.kind) {
   case BluetoothEvent::Kind::UartRxLine: {
-    char         line[256];
-    const size_t maxLine = sizeof(line) - 1U;
-    const size_t el      = static_cast<size_t>(event.len);
-    const size_t n       = el < maxLine ? el : maxLine;
-    memcpy(line, event.data, n);
-    line[n] = '\0';
-    processIncomingLine(line);
+    const size_t n = static_cast<size_t>(event.len);
+    appendIncomingRx(event.data, n);
     break;
   }
   case BluetoothEvent::Kind::OutgoingMessage:
@@ -163,6 +253,8 @@ void BluetoothTask::processEvent(const BluetoothEvent &event) {
     break;
   case BluetoothEvent::Kind::BleDisconnected:
     ESP_LOGI(TAG, "BLE UART disconnected");
+    rxAccLen_ = 0;
+    rxAcc_[0] = '\0';
     break;
   }
 }
@@ -200,19 +292,14 @@ void BluetoothTask::processIncomingLine(char *line) {
   }
 }
 
-// Auxiliar global usado pelos manipuladores de comando para emitir respostas na
-// linha via fila do Active Object.
+// Auxiliar global usado pelos manipuladores de comando e telemetria.
 bool bluetoothPushMessage(const char *fmt, ...) {
   if(g_bluetoothTask == nullptr) {
     return false;
   }
-  BluetoothEvent ev{};
-  ev.kind = BluetoothEvent::Kind::OutgoingMessage;
   va_list ap;
   va_start(ap, fmt);
-  (void)vsnprintf(ev.data, sizeof(ev.data), fmt, ap);
+  const bool ok = g_bluetoothTask->deliverFormatted(fmt, ap);
   va_end(ap);
-  ev.data[sizeof(ev.data) - 1] = '\0';
-  ev.len                       = static_cast<uint16_t>(strlen(ev.data));
-  return g_bluetoothTask->post(ev, 0);
+  return ok;
 }

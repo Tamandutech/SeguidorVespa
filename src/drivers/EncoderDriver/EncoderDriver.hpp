@@ -11,13 +11,12 @@ enum EncoderType { single, half, full };
 
 class EncoderDriver {
 public:
-  EncoderDriver();
+  explicit EncoderDriver(bool invertSignal = false);
   ~EncoderDriver();
 
-  void attachHalfQuad(int aPintNumber, int bPinNumber);
-  void attachFullQuad(int aPintNumber, int bPinNumber);
-  void attachSingleEdge(int aPintNumber, int bPinNumber);
-  // void attachHalfQuad(int aPintNumber, int bPinNumber);
+  void    attachHalfQuad(int aPintNumber, int bPinNumber);
+  void    attachFullQuad(int aPintNumber, int bPinNumber);
+  void    attachSingleEdge(int aPintNumber, int bPinNumber);
   int32_t getCount();
   int32_t getCountRaw();
   int32_t clearCount();
@@ -43,12 +42,13 @@ private:
   bool attached = false;
   bool direction;
   bool working;
+  bool invertSignal = false;
 };
 
 bool EncoderDriver::useInternalWeakPullResistors = true;
-bool EncoderDriver::attachedInterrupt           = false;
+bool EncoderDriver::attachedInterrupt            = false;
 
-EncoderDriver::EncoderDriver() {
+EncoderDriver::EncoderDriver(bool invertSignal) : invertSignal(invertSignal) {
   attached   = false;
   aPinNumber = (gpio_num_t)0;
   bPinNumber = (gpio_num_t)0;
@@ -157,13 +157,19 @@ void EncoderDriver::attachFullQuad(int aPintNumber, int bPinNumber) {
   attach(aPintNumber, bPinNumber, full);
 }
 
-void EncoderDriver::setCount(int32_t value) { count = value - getCountRaw(); }
+void EncoderDriver::setCount(int32_t value) {
+  const int32_t hardwareValue = invertSignal ? -value : value;
+  count                       = hardwareValue - getCountRaw();
+}
 int32_t EncoderDriver::getCountRaw() {
   int c;
   ESP_ERROR_CHECK(pcnt_unit_get_count(pcnt_unit, &c));
   return c;
 }
-int32_t EncoderDriver::getCount() { return getCountRaw() + count; }
+int32_t EncoderDriver::getCount() {
+  const int32_t value = getCountRaw() + count;
+  return invertSignal ? -value : value;
+}
 
 int32_t EncoderDriver::clearCount() {
   count = 0;

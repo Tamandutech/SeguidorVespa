@@ -3,18 +3,33 @@
 
 #include <stdint.h>
 
+/// Ponto do mapa. O índice é a posição no array (RAM) / o campo `index` no
+/// arquivo e na comunicação Bluetooth.
+/// `encoderLeft` / `encoderRight` são as contagens das rodas; `speed` é o PWM
+/// base do motor (equivalente ao antigo `baseMotorPWM`).
+/// `encoderDerivative` é a derivada de (right - left) no instante do ponto;
+/// `encoderDerivativeAverage` é a média móvel dessa derivada.
 struct MapPoint {
-  int32_t encoderMilimeters{};
-  int32_t baseMotorPWM{};
-  int32_t baseVacuumPWM{};
-  enum MarkType {
-    LEFT_MARK,
-    RIGHT_MARK,
-    HANDMADE_MARK,
-    STOP_COMMAND_MARK,
-    UNKNOWN_MARK
-  } markType;
+  int32_t encoderLeft{};
+  int32_t encoderRight{};
+  float   encoderDerivative{};
+  float   encoderDerivativeAverage{};
+  float   speed{};
+  enum PointType {
+    AUTO_MARK,         ///< Recorded by the robot while mapping.
+    MANUAL_MARK,       ///< Added by the user via CLI.
+    STOP_COMMAND_MARK, ///< Last point, saved when mapping is stopped.
+    UNKNOWN_MARK,      ///< Unknown mark type.
+    CURVE_START_MARK,  ///< Transition into a curve (derivative above average).
+    CURVE_END_MARK ///< Transition out of a curve (derivative below average).
+  } pointType{UNKNOWN_MARK};
 };
+
+
+/// Progresso para frente: média das contagens dos encoders (pulsos).
+inline int32_t mapPointProgress(const MapPoint &point) {
+  return (point.encoderLeft + point.encoderRight) / 2;
+}
 
 struct ParametersConfig {
   bool    runOnMappingMode{};
@@ -29,8 +44,18 @@ struct ParametersConfig {
   float pidKi{};
   float pidKd{};
   /// Base motor PWM magnitude while mapping (see MainTask MAPPING state).
-  /// BLE: \c Mapping.mappingMotorPWM (clamped to \c MAX_MOTOR_PWM from env.hpp).
+  /// BLE: \c Mapping.mappingMotorPWM (clamped to \c MAX_MOTOR_PWM from
+  /// env.hpp).
   int32_t mappingMotorPWM{};
+  /// Minimum interval between recorded map points, in milliseconds.
+  /// BLE: \c Mapping.mapPointSaveInterval.
+  int32_t mapPointSaveInterval{};
+  /// Sample window for the moving average of encoder-delta derivatives.
+  /// BLE: \c Mapping.mapPointMovingAverageSize.
+  int32_t mapPointMovingAverageSize{};
+  /// Margin between current derivative and moving average to record a
+  /// straight/curve transition. BLE: \c Mapping.mapPointDerivativeMargin.
+  float mapPointDerivativeMargin{};
 };
 
 #endif // DATA_TYPES_HPP

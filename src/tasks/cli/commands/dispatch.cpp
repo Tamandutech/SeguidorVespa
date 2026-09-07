@@ -36,7 +36,7 @@ static int batchMapAdd(std::vector<WireCommand> &cmds, size_t headerIdx,
   }
   std::sort(globalData.mapData.begin(), globalData.mapData.end(),
             [](const MapPoint &a, const MapPoint &b) {
-              return a.encoderMilimeters < b.encoderMilimeters;
+              return mapPointProgress(a) < mapPointProgress(b);
             });
   emitListBatchAckIfComplete(proto, "map_add", hdr);
   return CLI_SUCCESS;
