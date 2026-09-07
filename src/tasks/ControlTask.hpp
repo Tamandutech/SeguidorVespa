@@ -5,7 +5,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "data_types.hpp"
 #include "tasks/StateMachineTask.hpp"
+
+#include <DataTomeMvAvg.h>
 
 class MotorDriver;
 class VacuumDriver;
@@ -25,7 +28,7 @@ public:
   explicit ControlTask(StateMachineTask *stateMachine);
   ~ControlTask();
 
-  bool start(uint32_t stackSizeWords = 4096, UBaseType_t priority = 10,
+  bool start(uint32_t stackSizeWords = 6144, UBaseType_t priority = 10,
              BaseType_t coreId = 1);
 
 private:
@@ -36,13 +39,21 @@ private:
   void calibrateSensors();
   void rebuildPathController();
   void stopActuators();
-  void onEnterMotionState();
+  void onEnterMotionState(RobotState newState);
+  void onLeaveMotionState(RobotState previousState);
   void tickStopped();
   void tickRunning();
   void tickMapping();
   void updateIdleLeds();
+  void appendMapPoint(MapPoint::PointType pointType, float encoderDerivative,
+                      float encoderDerivativeAverage);
+  void maybeRecordMapPoint();
+  void resetMappingDerivative();
+  void recordTransitionLed();
 
-  int32_t encoderAverageMm() const;
+  int32_t  encoderAverage() const;
+  MapPoint currentMapPoint(MapPoint::PointType pointType, float encoderDerivative,
+                           float encoderDerivativeAverage) const;
 
   StateMachineTask *stateMachine_;
   TaskHandle_t      taskHandle_;
@@ -58,10 +69,17 @@ private:
   uint16_t lineSensorValues_[12];
   uint16_t sideSensorValues_[4];
 
-  RobotState lastState_;
-  uint32_t   mapPointIndex_;
-  int32_t    finishLineMm_;
-  bool       properlyCalibrated_;
-  bool       alternateLedColorFlag_;
-  TickType_t lastIdleLedUpdate_;
+  RobotState            lastState_;
+  uint32_t              mapPointIndex_;
+  int32_t               finishLinePulses_;
+  bool                  properlyCalibrated_;
+  bool                  alternateLedColorFlag_;
+  TickType_t            lastIdleLedUpdate_;
+  TickType_t            lastMapSaveTick_;
+  TickType_t            lastDerivativeTick_;
+  int32_t               lastDeltaEncoder_;
+  float                 lastEncoderDerivative_;
+  float                 lastEncoderDerivativeAverage_;
+  bool                  derivativeInitialized_;
+  DataTomeMvAvg<float> *encoderDerivativeAverage_;
 };

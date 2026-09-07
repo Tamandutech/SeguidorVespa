@@ -1,3 +1,5 @@
+#include <DataTomeMvAvg.h>
+
 // Framework
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -43,7 +45,8 @@ void app_main() {
   // pinned to core 0 in sdkconfig).
   (void)gBluetoothTask.start(kBluetoothTaskStackWords, 2, 0);
   // Control loop (Core 1, high priority): polls gRobotState, no event queue.
-  (void)gControlTask.start(4096, 10, 1);
+  // 24 KiB: calibração + ESP_LOGI + um BluetoothEvent (~2 KiB) ao reportar erro.
+  (void)gControlTask.start(6144, 10, 1);
 
   // TASK CREATION END
 

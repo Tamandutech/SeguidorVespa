@@ -107,6 +107,24 @@ bool getParameterValue(const char *className, const char *parameterName,
                static_cast<long>(globalData.parametersConfig.mappingMotorPWM));
       return true;
     }
+    if(strcmp(parameterName, "mapPointSaveInterval") == 0) {
+      snprintf(
+          valueBuffer, bufferSize, "%ld",
+          static_cast<long>(globalData.parametersConfig.mapPointSaveInterval));
+      return true;
+    }
+    if(strcmp(parameterName, "mapPointMovingAverageSize") == 0) {
+      snprintf(valueBuffer, bufferSize, "%ld",
+               static_cast<long>(
+                   globalData.parametersConfig.mapPointMovingAverageSize));
+      return true;
+    }
+    if(strcmp(parameterName, "mapPointDerivativeMargin") == 0) {
+      snprintf(valueBuffer, bufferSize, "%.6f",
+               static_cast<double>(
+                   globalData.parametersConfig.mapPointDerivativeMargin));
+      return true;
+    }
   }
 
   if(strcmp(className, "PID") == 0) {
@@ -175,6 +193,38 @@ bool setParameterValue(const char *className, const char *parameterName,
         val = MAX_MOTOR_PWM;
       }
       globalData.parametersConfig.mappingMotorPWM = static_cast<int32_t>(val);
+      return true;
+    }
+    if(strcmp(parameterName, "mapPointSaveInterval") == 0) {
+      int val = atoi(actualValue);
+      if(val < 1) {
+        val = 1;
+      }
+      globalData.parametersConfig.mapPointSaveInterval =
+          static_cast<int32_t>(val);
+      return true;
+    }
+    if(strcmp(parameterName, "mapPointMovingAverageSize") == 0) {
+      int val = atoi(actualValue);
+      if(val < 2) {
+        val = 2;
+      }
+      if(val > 256) {
+        val = 256;
+      }
+      globalData.parametersConfig.mapPointMovingAverageSize =
+          static_cast<int32_t>(val);
+      return true;
+    }
+    if(strcmp(parameterName, "mapPointDerivativeMargin") == 0) {
+      float v = 0.0F;
+      if(!parseCliFloat(value, &v)) {
+        return false;
+      }
+      if(v < 0.0F) {
+        v = 0.0F;
+      }
+      globalData.parametersConfig.mapPointDerivativeMargin = v;
       return true;
     }
   }
@@ -251,6 +301,18 @@ bool wireParamList(CliProtocol &proto) {
   }
   if(getParameterValue("Mapping", "mappingMotorPWM", v, sizeof(v))) {
     rows.push_back({"Mapping.mappingMotorPWM", {}});
+    strncpy(rows.back().valueBuf, v, sizeof(rows.back().valueBuf) - 1);
+  }
+  if(getParameterValue("Mapping", "mapPointSaveInterval", v, sizeof(v))) {
+    rows.push_back({"Mapping.mapPointSaveInterval", {}});
+    strncpy(rows.back().valueBuf, v, sizeof(rows.back().valueBuf) - 1);
+  }
+  if(getParameterValue("Mapping", "mapPointMovingAverageSize", v, sizeof(v))) {
+    rows.push_back({"Mapping.mapPointMovingAverageSize", {}});
+    strncpy(rows.back().valueBuf, v, sizeof(rows.back().valueBuf) - 1);
+  }
+  if(getParameterValue("Mapping", "mapPointDerivativeMargin", v, sizeof(v))) {
+    rows.push_back({"Mapping.mapPointDerivativeMargin", {}});
     strncpy(rows.back().valueBuf, v, sizeof(rows.back().valueBuf) - 1);
   }
   if(getParameterValue("PID", "kP", v, sizeof(v))) {
